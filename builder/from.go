@@ -10,8 +10,8 @@ type FromStruct struct {
 }
 
 // BuildFrom is a function to build the from clause
-func (qb *Obj) BuildFrom(fromSource string, fromKeyword string) {
-	qb.SQLQuery.FromPhrase.FromKeyword = fromKeyword
-	qb.SQLQuery.FromPhrase.FromSource = fromSource
+func (qb *Obj) BuildFrom() {
+	qb.SQLQuery.FromPhrase.FromKeyword = qb.SQLLanguageLiterals.FromKeyword
+	qb.SQLQuery.FromPhrase.FromSource = qb.SQLQuery.SQLTableName
 	qb.SQLQuery.FromPhrase.FinalFromPhrase = fmt.Sprintf("%s %s ", qb.SQLQuery.FromPhrase.FromKeyword, qb.SQLQuery.FromPhrase.FromSource)
 }

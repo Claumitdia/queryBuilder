@@ -37,6 +37,12 @@ type SQLLanguageLiterals struct {
 	Lte              string // <=
 	Between          string // BETWEEN
 	TimeFieldName    string // __time for druid, created_date for pg //need to ask Ryan/Anjaneya/Mike
+	NumberType       []string
+	StringType       []string
+	EqualToInt       string
+	NotEqualToInt    string
+	EqualToString    string
+	NotEqualToString string
 }
 
 //DruidSQLLanguageLiterals has all keywords understood in druid sql
@@ -73,10 +79,16 @@ var DruidSQLLanguageLiterals = SQLLanguageLiterals{
 	Gte:              "%s >= %v",
 	Lte:              "%s <= %v",
 	Between:          "%s BETWEEN %s AND %s",
-	TimeFieldName:    "__TIME",
+	TimeFieldName:    "__time",
 	TimestampLiteral: "TIMESTAMP '%s'",
 	IsNull:           "IS NULL",
 	IsNotNull:        "IS NOT NULL",
+	NumberType:       []string{"BIGINT", "FLOAT", "DOUBLE"},
+	StringType:       []string{"VARCHAR"},
+	EqualToInt:       "%s = %v",
+	NotEqualToInt:    "%s <> %v",
+	EqualToString:    "%s = '%v'",
+	NotEqualToString: "%s <> '%v'",
 }
 
 //PGSQLLanguageLiterals has all keywords understood in postgresq pgsql
@@ -108,13 +120,19 @@ var PGSQLLanguageLiterals = SQLLanguageLiterals{
 	Sum:              " SUM",
 	Round:            " ROUND",
 	Count:            " COUNT",
-	Gt:               "(%s > %v)",
-	Lt:               "(%s < %v)",
-	Gte:              "(%s >= %v)",
-	Lte:              "(%s <= %v)",
+	Gt:               "%s > %v",
+	Lt:               "%s < %v",
+	Gte:              "%s >= %v",
+	Lte:              "%s <= %v",
 	Between:          "%s BETWEEN %s AND %s",
 	TimeFieldName:    "CREATED_DATE",
 	TimestampLiteral: "TO_TIMESTAMP('%s','YYYY-MM-DD HH24:MI:SS')",
 	IsNull:           "IS NULL",
 	IsNotNull:        "IS NOT NULL",
+	NumberType:       []string{"bigint", "integer"},
+	StringType:       []string{"bytea", "character varying"},
+	EqualToInt:       "%s = %v",
+	NotEqualToInt:    "%s <> %v",
+	EqualToString:    "%s = '%v'",
+	NotEqualToString: "%s <> '%v'",
 }
