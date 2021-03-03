@@ -3,6 +3,8 @@ package querybuilder
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
+	"log"
 	"net/url"
 	"strconv"
 	s "strings"
@@ -13,7 +15,6 @@ import (
 type QueryBuilder interface {
 	SQLBuilderFromURL(url.Values)
 	QueryBuilderFunc() (string, error)
-	processInputValue(string)
 	calculateStartEndTime(url.Values)
 }
 
@@ -26,15 +27,10 @@ func (qb *Obj) QueryBuilderFunc() (string, error) {
 			finalQuery += qb.SQLQuery.FromPhrase.FinalFromPhrase
 			if qb.SQLQuery.WherePhrase.FinalWherePhrase != "" {
 				finalQuery += qb.SQLQuery.WherePhrase.FinalWherePhrase
-				if len(qb.SQLQuery.AndPhrase) != 0 {
-					for _, andPhrase := range qb.SQLQuery.AndPhrase {
-						finalQuery += s.Replace(andPhrase.FinalAndPhrase, "AND", "AND (", 1)
-						for _, orPhrase := range qb.SQLQuery.OrPhrase {
-							if orPhrase.GroupNum == andPhrase.GroupNum {
-								finalQuery += orPhrase.FinalOrPhrase
-							}
-						}
-						finalQuery += ")"
+				//for and and or
+				for _, opPhrase := range qb.SQLQuery.OperatorPhrase {
+					for _, o := range opPhrase {
+						finalQuery += o
 					}
 				}
 				if qb.SQLQuery.GroupByPhrase.FinalGroupByPhrase != "" {
@@ -60,8 +56,7 @@ func (qb *Obj) QueryBuilderFunc() (string, error) {
 
 //SQLBuilderFromURL - fills QueryBuilder.SQLQuery with all phrases
 func (qb *Obj) SQLBuilderFromURL(queryParametersURLValues url.Values) {
-	qb.SQLQuery = SQLQueryObj{}
-
+	log.Println(qb.SQLLanguageLiterals.Language)
 	if len(queryParametersURLValues["endTime"]) == 0 {
 		// log.Println("inside if of endtime")
 		qb.calculateStartEndTime(queryParametersURLValues["startTime"][0], time.Now().Local().Format("2006-01-02 15:04:05"))
@@ -116,134 +111,69 @@ func (qb *Obj) SQLBuilderFromURL(queryParametersURLValues url.Values) {
 			cft := ColumnFunctionType{}
 			cft.BuildColumnFunctionTypeObj("", "")
 			columnNameObj.BuildColumnNameStructObj(qb.SQLLanguageLiterals.TimeFieldName, "timestamp", "", cft)
-			opObjStartime.BuildOperator(columnNameObj, qb.SQLQuery.StartTime, qb.SQLLanguageLiterals.Gte, qb.SQLLanguageLiterals.Language)
+			opObjStartime.BuildOperatorString(columnNameObj, qb.SQLQuery.StartTime, qb.SQLLanguageLiterals.Gte, qb.SQLLanguageLiterals.Language)
 			qb.BuildWhere(&opObjStartime, qb.SQLLanguageLiterals.WhereKeyword)
-			opObjEndTime.BuildOperator(columnNameObj, qb.SQLQuery.EndTime, qb.SQLLanguageLiterals.Lte, qb.SQLLanguageLiterals.Language)
-			qb.SQLQuery.AndPhrase = append(qb.SQLQuery.AndPhrase, AndStruct{
-				AndKeyword:  qb.SQLLanguageLiterals.AndKeyword,
-				AndOperator: opObjEndTime,
-			})
+			opObjEndTime.BuildOperatorString(columnNameObj, qb.SQLQuery.EndTime, qb.SQLLanguageLiterals.Lte, qb.SQLLanguageLiterals.Language)
+			qb.SQLQuery.OperatorPhrase = map[int][]string{
+				100: {fmt.Sprintf("%s ", qb.SQLLanguageLiterals.AndKeyword) + opObjEndTime.FinalOperatorPhrase},
+			}
 		} else if key == "dataSource" {
-			qb.BuildFrom(val[0], qb.SQLLanguageLiterals.FromKeyword)
+			log.Println("table name: ", val[0])
+			qb.SQLQuery.SQLTableName = val[0]
+			qb.BuildFrom()
 		}
 	}
 
-	//this will add entime stmt
-	qb.BuildAnd()
+	//this will add endtime stmt
+	// qb.BuildAnd()
 
 	delete(queryParametersURLValues, "startTime")
 	delete(queryParametersURLValues, "limit")
 	delete(queryParametersURLValues, "dataSource")
 
+	log.Println("\ncolumn dt map: ", qb.SQLQuery.SQLColumnTypes)
 	for key, val := range queryParametersURLValues {
 		if key != "column" {
-			qb.processStringInputValue(key, val)
-		}
-	}
-
-	// log.Println("finalQueryobj :", qb.SQLQuery)
-	//build group by columns and 'by' after all done
-	//build having also after all done
-	//decide which and the column will be ? normal and or with having, samewith or
-
-}
-
-//processStringInputValue will process each columns inputs given in url
-//example url willhave : hostName={com,.com,something},{"doesNotContains":"e","operator":"or"}&hostName={}
-//url.Values will have hostName=[{com,.com,something},{"doesNotContains":"e","operator":"or"},{}]
-func (qb *Obj) processStringInputValue(inputCol string, inputVal []string) {
-	groupNum := 0
-	for _, singleJSONItem := range inputVal {
-		//unmarshall the json if it is one
-		// log.Println("singleJSONItem: ", singleJSONItem)
-		var unmarshalledJSON StringJSON
-		unmarshallJSONErr := json.Unmarshal([]byte(singleJSONItem), &unmarshalledJSON)
-		var stringValueList []string
-		var literalString string
-
-		if unmarshallJSONErr != nil {
-			literalString = qb.SQLLanguageLiterals.Contains
-			stringValueList = s.Split(singleJSONItem, ",")
-			groupNum++
-			qb.processEachJSON(stringValueList, inputCol, literalString, groupNum)
-		} else {
-			if len(unmarshalledJSON.Contains) != 0 {
-				stringValueList = unmarshalledJSON.Contains
-				literalString = qb.SQLLanguageLiterals.Contains
-				groupNum++
-				qb.processEachJSON(stringValueList, inputCol, literalString, groupNum)
-			}
-			if len(unmarshalledJSON.DoesNotContains) != 0 {
-				stringValueList = unmarshalledJSON.DoesNotContains
-				literalString = qb.SQLLanguageLiterals.DoesNotContain
-				groupNum++
-				qb.processEachJSON(stringValueList, inputCol, literalString, groupNum)
-			}
-			if len(unmarshalledJSON.DoesNotEndsWith) != 0 {
-				stringValueList = unmarshalledJSON.DoesNotEndsWith
-				literalString = qb.SQLLanguageLiterals.DoesNotEndWith
-				groupNum++
-				qb.processEachJSON(stringValueList, inputCol, literalString, groupNum)
-			}
-			if len(unmarshalledJSON.EndsWith) != 0 {
-				stringValueList = unmarshalledJSON.EndsWith
-				literalString = qb.SQLLanguageLiterals.EndsWith
-				groupNum++
-				qb.processEachJSON(stringValueList, inputCol, literalString, groupNum)
-			}
-			if len(unmarshalledJSON.StartsWith) != 0 {
-				stringValueList = unmarshalledJSON.StartsWith
-				literalString = qb.SQLLanguageLiterals.StartsWith
-				groupNum++
-				qb.processEachJSON(stringValueList, inputCol, literalString, groupNum)
-			}
-			if len(unmarshalledJSON.DoesNotStartsWith) != 0 {
-				stringValueList = unmarshalledJSON.DoesNotStartsWith
-				literalString = qb.SQLLanguageLiterals.DoesNotStartWith
-				groupNum++
-				qb.processEachJSON(stringValueList, inputCol, literalString, groupNum)
-			}
-			if len(unmarshalledJSON.Equal) != 0 {
-				stringValueList = unmarshalledJSON.Equal
-				literalString = qb.SQLLanguageLiterals.InList
-				groupNum++
-				qb.processEachJSON(stringValueList, inputCol, literalString, groupNum)
-			}
-			if len(unmarshalledJSON.NotEqual) != 0 {
-				stringValueList = unmarshalledJSON.NotEqual
-				literalString = qb.SQLLanguageLiterals.NotInList
-				groupNum++
-				qb.processEachJSON(stringValueList, inputCol, literalString, groupNum)
+			log.Println("key value:", key)
+			log.Println("val value:", val)
+			for intMap, singleVal := range val {
+				if string(singleVal[0]) == "{" && string(singleVal[len(singleVal)-1]) == "}" {
+					log.Println("singlevalue:", singleVal)
+					//process json
+					if qb.columnIsString(key) {
+						log.Println("is string true")
+						var typeStruct StringJSON
+						_ = json.Unmarshal([]byte(singleVal), &typeStruct)
+						qb.SQLQuery.OperatorPhrase[intMap] = []string{}
+						qb.processStringJSONInput(key, typeStruct, intMap)
+					} else if qb.columnIsInt(key) {
+						log.Println("is int true")
+						var typeStruct IntJSON
+						_ = json.Unmarshal([]byte(singleVal), &typeStruct)
+						qb.SQLQuery.OperatorPhrase[intMap] = []string{}
+						qb.processIntJSONInput(key, typeStruct, intMap)
+					}
+				} else {
+					//process array
+					stringArray := s.Split(singleVal, ",")
+					if qb.columnIsInt(key) {
+						var intArrayInput []int
+						var j int
+						for _, vali := range stringArray {
+							j, _ = strconv.Atoi(vali)
+							intArrayInput = append(intArrayInput, j)
+						}
+						qb.SQLQuery.OperatorPhrase[intMap] = []string{}
+						qb.processIntArrayInput(intArrayInput, intMap)
+					} else if qb.columnIsString(key) {
+						qb.SQLQuery.OperatorPhrase[intMap] = []string{}
+						qb.processStringArrayInput(stringArray, intMap)
+					}
+				}
 			}
 		}
 	}
-}
 
-func (qb *Obj) processEachJSON(stringValueList []string, inputCol string, literalString string, groupNum int) {
-	leftColFunction := ColumnFunctionType{}
-	leftColFunction.BuildColumnFunctionTypeObj("", "")
-	leftColName := ColumnNameStruct{}
-	leftColName.BuildColumnNameStructObj(inputCol, "", "", leftColFunction)
-	operatorItem := OperatorStruct{}
-	for idx, containsStringItem := range stringValueList {
-		var keyWordStart string
-		operatorItem.BuildOperator(leftColName, containsStringItem, literalString, qb.SQLLanguageLiterals.Language)
-		if idx == 0 {
-			qb.SQLQuery.AndPhrase = append(qb.SQLQuery.AndPhrase, AndStruct{
-				AndKeyword:  qb.SQLLanguageLiterals.AndKeyword + keyWordStart,
-				AndOperator: operatorItem,
-				GroupNum:    strconv.Itoa(groupNum) + operatorItem.LeftColumnName.columnName,
-			})
-		} else {
-			qb.SQLQuery.OrPhrase = append(qb.SQLQuery.OrPhrase, OrStruct{
-				OrKeyword:  qb.SQLLanguageLiterals.OrKeyword,
-				OrOperator: operatorItem,
-				GroupNum:   strconv.Itoa(groupNum) + operatorItem.LeftColumnName.columnName,
-			})
-		}
-		qb.BuildAnd()
-		qb.BuildOr()
-	}
 }
 
 //calculateStartEndTime - calculates start and endtime and stores in QueryBuilder.SQLQuery.startTime and QueryBuilder.SQLQuery.endTime
@@ -294,13 +224,205 @@ type Obj struct {
 
 //StringJSON is a format for the json input allowed for string columns in the URL
 type StringJSON struct {
-	StartsWith        []string `json:"startsWith"`
-	DoesNotStartsWith []string `json:"doesNotStartsWith"`
-	Contains          []string `json:"contains"`
-	DoesNotContains   []string `json:"doesNotContains"`
-	EndsWith          []string `json:"endsWith"`
-	DoesNotEndsWith   []string `json:"doesNotEndsWith"`
-	Equal             []string `json:"equal"`
-	NotEqual          []string `json:"notEqual"`
-	Operator          []string `json:"operator"`
+	StartsWith        *[]string `json:"startsWith"`
+	DoesNotStartsWith *[]string `json:"doesNotStartsWith"`
+	Contains          *[]string `json:"contains"`
+	DoesNotContains   *[]string `json:"doesNotContains"`
+	EndsWith          *[]string `json:"endsWith"`
+	DoesNotEndsWith   *[]string `json:"doesNotEndsWith"`
+	Equal             *[]string `json:"equal"`
+	NotEqual          *[]string `json:"notEqual"`
+	Operator          *string   `json:"operator"`
 }
+
+type IntJSON struct {
+	Gt       *float64   `json:"gt"`
+	Lt       *float64   `json:"lt"`
+	Gte      *float64   `json:"gte"`
+	Lte      *float64   `json:"lte"`
+	Equal    *[]float64 `json:"equal"`
+	NotEqual *[]float64 `json:"notEqual"`
+	Operator *string    `json:"operator"`
+}
+
+func (qb *Obj) columnIsInt(columnName string) bool {
+	log.Println("inside columnIsInt")
+	for _, columnType := range qb.SQLLanguageLiterals.NumberType {
+		if qb.SQLQuery.SQLColumnTypes[columnName] == columnType {
+			return true
+		}
+	}
+	return false
+}
+
+func (qb *Obj) columnIsString(columnName string) bool {
+	log.Println("inside columnIsString")
+	for _, columnType := range qb.SQLLanguageLiterals.StringType {
+		if qb.SQLQuery.SQLColumnTypes[columnName] == columnType {
+			return true
+		}
+	}
+	return false
+}
+
+func (qb *Obj) processStringJSONInput(inputCol string, jsonInput StringJSON, groupNum int) {
+	log.Println("inside process String json")
+	var operatorValue string
+	if fmt.Sprintf("%v", jsonInput.Operator) != "<nil>" {
+		log.Println(jsonInput.Operator)
+		operatorValue = *jsonInput.Operator
+	} else {
+		operatorValue = "and"
+	}
+
+	log.Println("operatorValue: ", operatorValue)
+
+	countKeys := 0
+	if fmt.Sprintf("%v", jsonInput.Contains) != "<nil>" {
+		countKeys++
+		qb.appendStringOperatorClauseToFinalObj(inputCol, jsonInput.Contains, qb.SQLLanguageLiterals.Contains, "", groupNum)
+	}
+	if fmt.Sprintf("%v", jsonInput.DoesNotContains) != "<nil>" {
+		countKeys++
+		if countKeys == 2 {
+			qb.appendStringOperatorClauseToFinalObj(inputCol, jsonInput.DoesNotContains, qb.SQLLanguageLiterals.DoesNotContain, operatorValue, groupNum)
+			return
+		}
+		qb.appendStringOperatorClauseToFinalObj(inputCol, jsonInput.DoesNotContains, qb.SQLLanguageLiterals.DoesNotContain, "", groupNum)
+	}
+	if fmt.Sprintf("%v", jsonInput.StartsWith) != "<nil>" {
+
+		countKeys++
+		log.Println("countKeys: ", countKeys)
+		if countKeys == 2 {
+			qb.appendStringOperatorClauseToFinalObj(inputCol, jsonInput.StartsWith, qb.SQLLanguageLiterals.StartsWith, operatorValue, groupNum)
+			return
+		}
+		qb.appendStringOperatorClauseToFinalObj(inputCol, jsonInput.StartsWith, qb.SQLLanguageLiterals.StartsWith, "", groupNum)
+	}
+	if fmt.Sprintf("%v", jsonInput.DoesNotStartsWith) != "<nil>" {
+		countKeys++
+		if countKeys == 2 {
+			qb.appendStringOperatorClauseToFinalObj(inputCol, jsonInput.DoesNotStartsWith, qb.SQLLanguageLiterals.DoesNotStartWith, operatorValue, groupNum)
+			return
+		}
+		qb.appendStringOperatorClauseToFinalObj(inputCol, jsonInput.DoesNotStartsWith, qb.SQLLanguageLiterals.DoesNotStartWith, "", groupNum)
+	}
+	if fmt.Sprintf("%v", jsonInput.EndsWith) != "<nil>" {
+		countKeys++
+		if countKeys == 2 {
+			qb.appendStringOperatorClauseToFinalObj(inputCol, jsonInput.EndsWith, qb.SQLLanguageLiterals.EndsWith, operatorValue, groupNum)
+			return
+		}
+		qb.appendStringOperatorClauseToFinalObj(inputCol, jsonInput.EndsWith, qb.SQLLanguageLiterals.EndsWith, "", groupNum)
+	}
+	if fmt.Sprintf("%v", jsonInput.DoesNotEndsWith) != "<nil>" {
+		countKeys++
+		if countKeys == 2 {
+			qb.appendStringOperatorClauseToFinalObj(inputCol, jsonInput.DoesNotEndsWith, qb.SQLLanguageLiterals.DoesNotEndWith, operatorValue, groupNum)
+			return
+		}
+		qb.appendStringOperatorClauseToFinalObj(inputCol, jsonInput.DoesNotEndsWith, qb.SQLLanguageLiterals.DoesNotEndWith, "", groupNum)
+	}
+	if fmt.Sprintf("%v", jsonInput.Equal) != "<nil>" {
+		countKeys++
+
+		if countKeys == 2 {
+			qb.appendStringOperatorClauseToFinalObj(inputCol, jsonInput.Equal, qb.SQLLanguageLiterals.EqualToString, operatorValue, groupNum)
+			return
+		}
+		qb.appendStringOperatorClauseToFinalObj(inputCol, jsonInput.Equal, qb.SQLLanguageLiterals.EqualToString, "", groupNum)
+	}
+	if fmt.Sprintf("%v", jsonInput.NotEqual) != "<nil>" {
+		countKeys++
+		if countKeys == 2 {
+			qb.appendStringOperatorClauseToFinalObj(inputCol, jsonInput.NotEqual, qb.SQLLanguageLiterals.NotEqualToString, operatorValue, groupNum)
+			return
+		}
+		qb.appendStringOperatorClauseToFinalObj(inputCol, jsonInput.NotEqual, qb.SQLLanguageLiterals.NotEqualToString, "", groupNum)
+	}
+	return
+}
+
+func (qb *Obj) processIntJSONInput(inputCol string, jsonInput IntJSON, groupNum int) {
+	log.Println("inside process Int json")
+
+}
+
+func (qb *Obj) processStringArrayInput(arrayInput []string, groupNum int) {
+
+}
+
+func (qb *Obj) processIntArrayInput(arrayInput []int, groupNum int) {
+
+}
+
+func (qb *Obj) appendStringOperatorClauseToFinalObj(inputCol string, jsonStringList *[]string, jsonKeyLiteral string, operatorVal string, groupNum int) {
+	columnItem := ColumnNameStruct{}
+	columnFunctionItem := ColumnFunctionType{}
+	columnFunctionItem.BuildColumnFunctionTypeObj("", "")
+	columnItem.BuildColumnNameStructObj(inputCol, "", "", columnFunctionItem)
+	operatorItem := OperatorStruct{}
+
+	for innerIdx, arrayVal := range *jsonStringList {
+		operatorItem.BuildOperatorString(columnItem, arrayVal, jsonKeyLiteral, qb.SQLLanguageLiterals.Language)
+		log.Println(arrayVal)
+		if innerIdx == 0 && innerIdx != len(*jsonStringList)-1 { //first key, but not last
+			log.Println("first key")
+			if operatorVal == "and" || operatorVal == "" {
+				log.Println("inside and first key")
+				qb.SQLQuery.OperatorPhrase[groupNum] = append(qb.SQLQuery.OperatorPhrase[groupNum], fmt.Sprintf(" %s (", qb.SQLLanguageLiterals.AndKeyword)+operatorItem.FinalOperatorPhrase)
+			} else {
+				log.Println("inside or first key")
+				qb.SQLQuery.OperatorPhrase[groupNum] = append(qb.SQLQuery.OperatorPhrase[groupNum], fmt.Sprintf(" %s (", qb.SQLLanguageLiterals.OrKeyword)+operatorItem.FinalOperatorPhrase)
+			}
+		} else if innerIdx == 0 && innerIdx == len(*jsonStringList)-1 { //first but last
+			log.Println("only one key")
+			if operatorVal == "and" || operatorVal == "" {
+				qb.SQLQuery.OperatorPhrase[groupNum] = append(qb.SQLQuery.OperatorPhrase[groupNum], fmt.Sprintf(" %s ", qb.SQLLanguageLiterals.AndKeyword)+operatorItem.FinalOperatorPhrase)
+			} else {
+				qb.SQLQuery.OperatorPhrase[groupNum] = append(qb.SQLQuery.OperatorPhrase[groupNum], fmt.Sprintf(" %s ", qb.SQLLanguageLiterals.OrKeyword)+operatorItem.FinalOperatorPhrase)
+			}
+		} else if innerIdx == len(*jsonStringList)-1 && innerIdx != 0 {
+			qb.SQLQuery.OperatorPhrase[groupNum] = append(qb.SQLQuery.OperatorPhrase[groupNum], fmt.Sprintf(" %s ", qb.SQLLanguageLiterals.OrKeyword)+operatorItem.FinalOperatorPhrase+")")
+		} else {
+			qb.SQLQuery.OperatorPhrase[groupNum] = append(qb.SQLQuery.OperatorPhrase[groupNum], fmt.Sprintf(" %s ", qb.SQLLanguageLiterals.OrKeyword)+operatorItem.FinalOperatorPhrase)
+		}
+	}
+	log.Println(qb.SQLQuery.OperatorPhrase)
+}
+
+// func (qb *Obj) appendIntOperatorClauseToFinalObj(inputCol string, jsonStringList *[]float64, jsonKeyLiteral string, operatorVal string, groupNum int) {
+// 	columnItem := ColumnNameStruct{}
+// 	columnFunctionItem := ColumnFunctionType{}
+// 	columnFunctionItem.BuildColumnFunctionTypeObj("", "")
+// 	columnItem.BuildColumnNameStructObj(inputCol, "", "", columnFunctionItem)
+// 	operatorItem := OperatorStruct{}
+
+// 	for innerIdx, arrayVal := range *jsonStringList {
+// 		operatorItem.BuildOperatorInt(columnItem, arrayVal, jsonKeyLiteral, qb.SQLLanguageLiterals.Language)
+// 		log.Println(arrayVal)
+// 		if innerIdx == 0 && innerIdx != len(*jsonStringList)-1 { //first key, but not last
+// 			log.Println("first key")
+// 			if operatorVal == "and" || operatorVal == "" {
+// 				log.Println("inside and first key")
+// 				qb.SQLQuery.OperatorPhrase[groupNum] = append(qb.SQLQuery.OperatorPhrase[groupNum], fmt.Sprintf(" %s (", qb.SQLLanguageLiterals.AndKeyword)+operatorItem.FinalOperatorPhrase)
+// 			} else {
+// 				log.Println("inside or first key")
+// 				qb.SQLQuery.OperatorPhrase[groupNum] = append(qb.SQLQuery.OperatorPhrase[groupNum], fmt.Sprintf(" %s (", qb.SQLLanguageLiterals.OrKeyword)+operatorItem.FinalOperatorPhrase)
+// 			}
+// 		} else if innerIdx == 0 && innerIdx == len(*jsonStringList)-1 { //first but last
+// 			log.Println("only one key")
+// 			if operatorVal == "and" || operatorVal == "" {
+// 				qb.SQLQuery.OperatorPhrase[groupNum] = append(qb.SQLQuery.OperatorPhrase[groupNum], fmt.Sprintf(" %s ", qb.SQLLanguageLiterals.AndKeyword)+operatorItem.FinalOperatorPhrase)
+// 			} else {
+// 				qb.SQLQuery.OperatorPhrase[groupNum] = append(qb.SQLQuery.OperatorPhrase[groupNum], fmt.Sprintf(" %s ", qb.SQLLanguageLiterals.OrKeyword)+operatorItem.FinalOperatorPhrase)
+// 			}
+// 		} else if innerIdx == len(*jsonStringList)-1 && innerIdx != 0 {
+// 			qb.SQLQuery.OperatorPhrase[groupNum] = append(qb.SQLQuery.OperatorPhrase[groupNum], fmt.Sprintf(" %s ", qb.SQLLanguageLiterals.OrKeyword)+operatorItem.FinalOperatorPhrase+")")
+// 		} else {
+// 			qb.SQLQuery.OperatorPhrase[groupNum] = append(qb.SQLQuery.OperatorPhrase[groupNum], fmt.Sprintf(" %s ", qb.SQLLanguageLiterals.OrKeyword)+operatorItem.FinalOperatorPhrase)
+// 		}
+// 	}
+// 	log.Println(qb.SQLQuery.OperatorPhrase)
+// }

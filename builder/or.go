@@ -1,7 +1,5 @@
 package querybuilder
 
-import "fmt"
-
 // OrStruct is a struct to hold the OR clause
 type OrStruct struct {
 	OrKeyword     string         //or
@@ -12,8 +10,8 @@ type OrStruct struct {
 }
 
 // BuildOr is a function to build all the and phrase coming in the query  after where and before group by(not in the having)
-func (qb *Obj) BuildOr() {
-	for idx := range qb.SQLQuery.OrPhrase {
-		qb.SQLQuery.OrPhrase[idx].FinalOrPhrase = fmt.Sprintf(" %s %s", qb.SQLQuery.OrPhrase[idx].OrKeyword, qb.SQLQuery.OrPhrase[idx].OrOperator.FinalOperatorPhrase)
-	}
-}
+// func (qb *Obj) BuildOr() {
+// 	for idx := range qb.SQLQuery.OrPhrase {
+// 		qb.SQLQuery.OrPhrase[idx].FinalOrPhrase = fmt.Sprintf(" %s %s", qb.SQLQuery.OrPhrase[idx].OrKeyword, qb.SQLQuery.OrPhrase[idx].OrOperator.FinalOperatorPhrase)
+// 	}
+// }
