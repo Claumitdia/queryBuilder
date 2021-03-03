@@ -2,6 +2,7 @@ package querybuilder
 
 import (
 	"fmt"
+	"log"
 )
 
 //OperatorStruct is a struct for any operator defined in literal , anything in the form : <colName> <operator> <colVal>
@@ -35,14 +36,6 @@ func (op *OperatorStruct) BuildOperatorInt(leftColName ColumnNameStruct, rightVa
 	op.LeftColumnName = leftColName
 	op.RightColumnValueInt = rightVal
 	op.OperatorKeyword = opKeyWord
-	if op.LeftColumnName.columnType == "timestamp" {
-		if languageKeyword == DruidSQLLanguageLiterals.Language {
-			op.FinalOperatorPhrase = fmt.Sprintf(op.OperatorKeyword, op.LeftColumnName.FinalColumnNamePhrase, fmt.Sprintf(DruidSQLLanguageLiterals.TimestampLiteral, op.RightColumnValueInt))
-		} else if languageKeyword == PGSQLLanguageLiterals.Language {
-			op.FinalOperatorPhrase = fmt.Sprintf(op.OperatorKeyword, op.LeftColumnName.FinalColumnNamePhrase, fmt.Sprintf(PGSQLLanguageLiterals.TimestampLiteral, op.RightColumnValueInt))
-		}
-	} else {
-		op.FinalOperatorPhrase = fmt.Sprintf(op.OperatorKeyword, op.LeftColumnName.FinalColumnNamePhrase, op.RightColumnValueInt)
-	}
-
+	log.Println("operator literal string :", op.OperatorKeyword)
+	op.FinalOperatorPhrase = fmt.Sprintf(op.OperatorKeyword, op.LeftColumnName.FinalColumnNamePhrase, op.RightColumnValueInt)
 }

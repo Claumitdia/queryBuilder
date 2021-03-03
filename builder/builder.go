@@ -124,9 +124,6 @@ func (qb *Obj) SQLBuilderFromURL(queryParametersURLValues url.Values) {
 		}
 	}
 
-	//this will add endtime stmt
-	// qb.BuildAnd()
-
 	delete(queryParametersURLValues, "startTime")
 	delete(queryParametersURLValues, "limit")
 	delete(queryParametersURLValues, "dataSource")
@@ -155,19 +152,23 @@ func (qb *Obj) SQLBuilderFromURL(queryParametersURLValues url.Values) {
 					}
 				} else {
 					//process array
+					log.Println("inside array")
 					stringArray := s.Split(singleVal, ",")
 					if qb.columnIsInt(key) {
-						var intArrayInput []int
-						var j int
+						var intArrayInput []float64
 						for _, vali := range stringArray {
-							j, _ = strconv.Atoi(vali)
+							j, jerr := strconv.ParseFloat(vali, 64)
+							if jerr != nil {
+								log.Println(jerr)
+							}
 							intArrayInput = append(intArrayInput, j)
 						}
 						qb.SQLQuery.OperatorPhrase[intMap] = []string{}
-						qb.processIntArrayInput(intArrayInput, intMap)
+						qb.processIntArrayInput(key, intArrayInput, intMap)
 					} else if qb.columnIsString(key) {
+						log.Println("inside string array")
 						qb.SQLQuery.OperatorPhrase[intMap] = []string{}
-						qb.processStringArrayInput(stringArray, intMap)
+						qb.processStringArrayInput(key, stringArray, intMap)
 					}
 				}
 			}
@@ -235,6 +236,7 @@ type StringJSON struct {
 	Operator          *string   `json:"operator"`
 }
 
+// IntJSON is a format for the json input
 type IntJSON struct {
 	Gt       *float64   `json:"gt"`
 	Lt       *float64   `json:"lt"`
@@ -326,7 +328,6 @@ func (qb *Obj) processStringJSONInput(inputCol string, jsonInput StringJSON, gro
 	}
 	if fmt.Sprintf("%v", jsonInput.Equal) != "<nil>" {
 		countKeys++
-
 		if countKeys == 2 {
 			qb.appendStringOperatorClauseToFinalObj(inputCol, jsonInput.Equal, qb.SQLLanguageLiterals.EqualToString, operatorValue, groupNum)
 			return
@@ -346,15 +347,117 @@ func (qb *Obj) processStringJSONInput(inputCol string, jsonInput StringJSON, gro
 
 func (qb *Obj) processIntJSONInput(inputCol string, jsonInput IntJSON, groupNum int) {
 	log.Println("inside process Int json")
+	var operatorValue string
+	if fmt.Sprintf("%v", jsonInput.Operator) != "<nil>" {
+		log.Println(jsonInput.Operator)
+		operatorValue = *jsonInput.Operator
+	} else {
+		operatorValue = "and"
+	}
 
+	log.Println("operatorValue: ", operatorValue)
+
+	countKeys := 0
+	if fmt.Sprintf("%v", jsonInput.Gt) != "<nil>" {
+		countKeys++
+		var gtArray *[]float64
+		gtArray = &[]float64{*jsonInput.Gt}
+		qb.appendIntOperatorClauseToFinalObj(inputCol, gtArray, qb.SQLLanguageLiterals.Gt, "", groupNum)
+	}
+	if fmt.Sprintf("%v", jsonInput.Lt) != "<nil>" {
+		countKeys++
+		var ltArray *[]float64
+		ltArray = &[]float64{*jsonInput.Lt}
+		if countKeys == 2 {
+			qb.appendIntOperatorClauseToFinalObj(inputCol, ltArray, qb.SQLLanguageLiterals.Lt, operatorValue, groupNum)
+			return
+		}
+		qb.appendIntOperatorClauseToFinalObj(inputCol, ltArray, qb.SQLLanguageLiterals.Lt, "", groupNum)
+	}
+	if fmt.Sprintf("%v", jsonInput.Gte) != "<nil>" {
+		countKeys++
+		var gtArray *[]float64
+		gtArray = &[]float64{*jsonInput.Gte}
+		if countKeys == 2 {
+			qb.appendIntOperatorClauseToFinalObj(inputCol, gtArray, qb.SQLLanguageLiterals.Gte, operatorValue, groupNum)
+			return
+		}
+		qb.appendIntOperatorClauseToFinalObj(inputCol, gtArray, qb.SQLLanguageLiterals.Gte, "", groupNum)
+	}
+	if fmt.Sprintf("%v", jsonInput.Lte) != "<nil>" {
+		countKeys++
+		var gtArray *[]float64
+		gtArray = &[]float64{*jsonInput.Lte}
+		if countKeys == 2 {
+			qb.appendIntOperatorClauseToFinalObj(inputCol, gtArray, qb.SQLLanguageLiterals.Lte, operatorValue, groupNum)
+			return
+		}
+		qb.appendIntOperatorClauseToFinalObj(inputCol, gtArray, qb.SQLLanguageLiterals.Lte, "", groupNum)
+	}
+
+	if fmt.Sprintf("%v", jsonInput.Equal) != "<nil>" {
+		countKeys++
+
+		if countKeys == 2 {
+			qb.appendIntOperatorClauseToFinalObj(inputCol, jsonInput.Equal, qb.SQLLanguageLiterals.EqualToInt, operatorValue, groupNum)
+			return
+		}
+		qb.appendIntOperatorClauseToFinalObj(inputCol, jsonInput.Equal, qb.SQLLanguageLiterals.EqualToInt, "", groupNum)
+	}
+	if fmt.Sprintf("%v", jsonInput.NotEqual) != "<nil>" {
+		countKeys++
+		if countKeys == 2 {
+			qb.appendIntOperatorClauseToFinalObj(inputCol, jsonInput.NotEqual, qb.SQLLanguageLiterals.NotEqualToInt, operatorValue, groupNum)
+			return
+		}
+		qb.appendIntOperatorClauseToFinalObj(inputCol, jsonInput.NotEqual, qb.SQLLanguageLiterals.NotEqualToInt, "", groupNum)
+	}
+	return
 }
 
-func (qb *Obj) processStringArrayInput(arrayInput []string, groupNum int) {
+func (qb *Obj) processStringArrayInput(inputCol string, arrayInput []string, groupNum int) {
+	columnItem := ColumnNameStruct{}
+	columnFunctionItem := ColumnFunctionType{}
+	columnFunctionItem.BuildColumnFunctionTypeObj("", "")
+	columnItem.BuildColumnNameStructObj(inputCol, "", "", columnFunctionItem)
+	operatorItem := OperatorStruct{}
 
+	for innerIdx, arrayVal := range arrayInput {
+		operatorItem.BuildOperatorString(columnItem, arrayVal, qb.SQLLanguageLiterals.Contains, qb.SQLLanguageLiterals.Language)
+		if innerIdx == 0 && innerIdx != len(arrayInput)-1 { //first key, but not last
+			log.Println("first key")
+			qb.SQLQuery.OperatorPhrase[groupNum] = append(qb.SQLQuery.OperatorPhrase[groupNum], fmt.Sprintf(" %s (", qb.SQLLanguageLiterals.AndKeyword)+operatorItem.FinalOperatorPhrase)
+		} else if innerIdx == 0 && innerIdx == len(arrayInput)-1 { //first but last
+			log.Println("only one key")
+			qb.SQLQuery.OperatorPhrase[groupNum] = append(qb.SQLQuery.OperatorPhrase[groupNum], fmt.Sprintf(" %s ", qb.SQLLanguageLiterals.AndKeyword)+operatorItem.FinalOperatorPhrase)
+		} else if innerIdx == len(arrayInput)-1 && innerIdx != 0 {
+			qb.SQLQuery.OperatorPhrase[groupNum] = append(qb.SQLQuery.OperatorPhrase[groupNum], fmt.Sprintf(" %s ", qb.SQLLanguageLiterals.OrKeyword)+operatorItem.FinalOperatorPhrase+")")
+		} else {
+			qb.SQLQuery.OperatorPhrase[groupNum] = append(qb.SQLQuery.OperatorPhrase[groupNum], fmt.Sprintf(" %s ", qb.SQLLanguageLiterals.OrKeyword)+operatorItem.FinalOperatorPhrase)
+		}
+	}
 }
 
-func (qb *Obj) processIntArrayInput(arrayInput []int, groupNum int) {
+func (qb *Obj) processIntArrayInput(inputCol string, arrayInput []float64, groupNum int) {
+	columnItem := ColumnNameStruct{}
+	columnFunctionItem := ColumnFunctionType{}
+	columnFunctionItem.BuildColumnFunctionTypeObj("", "")
+	columnItem.BuildColumnNameStructObj(inputCol, "", "", columnFunctionItem)
+	operatorItem := OperatorStruct{}
 
+	for innerIdx, arrayVal := range arrayInput {
+		log.Println("value: ", arrayVal)
+		operatorItem.BuildOperatorInt(columnItem, arrayVal, qb.SQLLanguageLiterals.EqualToInt, qb.SQLLanguageLiterals.Language)
+		if innerIdx == 0 && innerIdx != len(arrayInput)-1 { //first key, but not last
+			qb.SQLQuery.OperatorPhrase[groupNum] = append(qb.SQLQuery.OperatorPhrase[groupNum], fmt.Sprintf(" %s (", qb.SQLLanguageLiterals.AndKeyword)+operatorItem.FinalOperatorPhrase)
+		} else if innerIdx == 0 && innerIdx == len(arrayInput)-1 { //first but last
+			qb.SQLQuery.OperatorPhrase[groupNum] = append(qb.SQLQuery.OperatorPhrase[groupNum], fmt.Sprintf(" %s ", qb.SQLLanguageLiterals.AndKeyword)+operatorItem.FinalOperatorPhrase)
+		} else if innerIdx == len(arrayInput)-1 && innerIdx != 0 {
+			qb.SQLQuery.OperatorPhrase[groupNum] = append(qb.SQLQuery.OperatorPhrase[groupNum], fmt.Sprintf(" %s ", qb.SQLLanguageLiterals.OrKeyword)+operatorItem.FinalOperatorPhrase+")")
+		} else {
+			qb.SQLQuery.OperatorPhrase[groupNum] = append(qb.SQLQuery.OperatorPhrase[groupNum], fmt.Sprintf(" %s ", qb.SQLLanguageLiterals.OrKeyword)+operatorItem.FinalOperatorPhrase)
+		}
+	}
 }
 
 func (qb *Obj) appendStringOperatorClauseToFinalObj(inputCol string, jsonStringList *[]string, jsonKeyLiteral string, operatorVal string, groupNum int) {
@@ -392,37 +495,37 @@ func (qb *Obj) appendStringOperatorClauseToFinalObj(inputCol string, jsonStringL
 	log.Println(qb.SQLQuery.OperatorPhrase)
 }
 
-// func (qb *Obj) appendIntOperatorClauseToFinalObj(inputCol string, jsonStringList *[]float64, jsonKeyLiteral string, operatorVal string, groupNum int) {
-// 	columnItem := ColumnNameStruct{}
-// 	columnFunctionItem := ColumnFunctionType{}
-// 	columnFunctionItem.BuildColumnFunctionTypeObj("", "")
-// 	columnItem.BuildColumnNameStructObj(inputCol, "", "", columnFunctionItem)
-// 	operatorItem := OperatorStruct{}
+func (qb *Obj) appendIntOperatorClauseToFinalObj(inputCol string, jsonStringList *[]float64, jsonKeyLiteral string, operatorVal string, groupNum int) {
+	columnItem := ColumnNameStruct{}
+	columnFunctionItem := ColumnFunctionType{}
+	columnFunctionItem.BuildColumnFunctionTypeObj("", "")
+	columnItem.BuildColumnNameStructObj(inputCol, "", "", columnFunctionItem)
+	operatorItem := OperatorStruct{}
 
-// 	for innerIdx, arrayVal := range *jsonStringList {
-// 		operatorItem.BuildOperatorInt(columnItem, arrayVal, jsonKeyLiteral, qb.SQLLanguageLiterals.Language)
-// 		log.Println(arrayVal)
-// 		if innerIdx == 0 && innerIdx != len(*jsonStringList)-1 { //first key, but not last
-// 			log.Println("first key")
-// 			if operatorVal == "and" || operatorVal == "" {
-// 				log.Println("inside and first key")
-// 				qb.SQLQuery.OperatorPhrase[groupNum] = append(qb.SQLQuery.OperatorPhrase[groupNum], fmt.Sprintf(" %s (", qb.SQLLanguageLiterals.AndKeyword)+operatorItem.FinalOperatorPhrase)
-// 			} else {
-// 				log.Println("inside or first key")
-// 				qb.SQLQuery.OperatorPhrase[groupNum] = append(qb.SQLQuery.OperatorPhrase[groupNum], fmt.Sprintf(" %s (", qb.SQLLanguageLiterals.OrKeyword)+operatorItem.FinalOperatorPhrase)
-// 			}
-// 		} else if innerIdx == 0 && innerIdx == len(*jsonStringList)-1 { //first but last
-// 			log.Println("only one key")
-// 			if operatorVal == "and" || operatorVal == "" {
-// 				qb.SQLQuery.OperatorPhrase[groupNum] = append(qb.SQLQuery.OperatorPhrase[groupNum], fmt.Sprintf(" %s ", qb.SQLLanguageLiterals.AndKeyword)+operatorItem.FinalOperatorPhrase)
-// 			} else {
-// 				qb.SQLQuery.OperatorPhrase[groupNum] = append(qb.SQLQuery.OperatorPhrase[groupNum], fmt.Sprintf(" %s ", qb.SQLLanguageLiterals.OrKeyword)+operatorItem.FinalOperatorPhrase)
-// 			}
-// 		} else if innerIdx == len(*jsonStringList)-1 && innerIdx != 0 {
-// 			qb.SQLQuery.OperatorPhrase[groupNum] = append(qb.SQLQuery.OperatorPhrase[groupNum], fmt.Sprintf(" %s ", qb.SQLLanguageLiterals.OrKeyword)+operatorItem.FinalOperatorPhrase+")")
-// 		} else {
-// 			qb.SQLQuery.OperatorPhrase[groupNum] = append(qb.SQLQuery.OperatorPhrase[groupNum], fmt.Sprintf(" %s ", qb.SQLLanguageLiterals.OrKeyword)+operatorItem.FinalOperatorPhrase)
-// 		}
-// 	}
-// 	log.Println(qb.SQLQuery.OperatorPhrase)
-// }
+	for innerIdx, arrayVal := range *jsonStringList {
+		operatorItem.BuildOperatorInt(columnItem, arrayVal, jsonKeyLiteral, qb.SQLLanguageLiterals.Language)
+		log.Println(arrayVal)
+		if innerIdx == 0 && innerIdx != len(*jsonStringList)-1 { //first key, but not last
+			log.Println("first key")
+			if operatorVal == "and" || operatorVal == "" {
+				log.Println("inside and first key")
+				qb.SQLQuery.OperatorPhrase[groupNum] = append(qb.SQLQuery.OperatorPhrase[groupNum], fmt.Sprintf(" %s (", qb.SQLLanguageLiterals.AndKeyword)+operatorItem.FinalOperatorPhrase)
+			} else {
+				log.Println("inside or first key")
+				qb.SQLQuery.OperatorPhrase[groupNum] = append(qb.SQLQuery.OperatorPhrase[groupNum], fmt.Sprintf(" %s (", qb.SQLLanguageLiterals.OrKeyword)+operatorItem.FinalOperatorPhrase)
+			}
+		} else if innerIdx == 0 && innerIdx == len(*jsonStringList)-1 { //first but last
+			log.Println("only one key")
+			if operatorVal == "and" || operatorVal == "" {
+				qb.SQLQuery.OperatorPhrase[groupNum] = append(qb.SQLQuery.OperatorPhrase[groupNum], fmt.Sprintf(" %s ", qb.SQLLanguageLiterals.AndKeyword)+operatorItem.FinalOperatorPhrase)
+			} else {
+				qb.SQLQuery.OperatorPhrase[groupNum] = append(qb.SQLQuery.OperatorPhrase[groupNum], fmt.Sprintf(" %s ", qb.SQLLanguageLiterals.OrKeyword)+operatorItem.FinalOperatorPhrase)
+			}
+		} else if innerIdx == len(*jsonStringList)-1 && innerIdx != 0 {
+			qb.SQLQuery.OperatorPhrase[groupNum] = append(qb.SQLQuery.OperatorPhrase[groupNum], fmt.Sprintf(" %s ", qb.SQLLanguageLiterals.OrKeyword)+operatorItem.FinalOperatorPhrase+")")
+		} else {
+			qb.SQLQuery.OperatorPhrase[groupNum] = append(qb.SQLQuery.OperatorPhrase[groupNum], fmt.Sprintf(" %s ", qb.SQLLanguageLiterals.OrKeyword)+operatorItem.FinalOperatorPhrase)
+		}
+	}
+	log.Println(qb.SQLQuery.OperatorPhrase)
+}
