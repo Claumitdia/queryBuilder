@@ -22,6 +22,6 @@ func (cns *ColumnNameStruct) BuildColumnNameStructObj(columnName string, columnT
 	if cns.columnAlias == "" {
 		cns.FinalColumnNamePhrase = fmt.Sprintf(cns.columnFunction.FinalColumnFunctionPhrase, cns.columnName)
 	} else {
-		cns.FinalColumnNamePhrase = fmt.Sprintf(cns.columnFunction.FinalColumnFunctionPhrase+" AS %s", cns.columnName, cns.columnAlias)
+		cns.FinalColumnNamePhrase = fmt.Sprintf(cns.columnFunction.FinalColumnFunctionPhrase+" AS \"%s\"", cns.columnName, cns.columnAlias)
 	}
 }

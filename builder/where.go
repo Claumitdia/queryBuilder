@@ -13,5 +13,5 @@ type WhereStruct struct {
 func (qb *Obj) BuildWhere(op *OperatorStruct, whereKeyword string) {
 	qb.SQLQuery.WherePhrase.whereKeyword = whereKeyword
 	qb.SQLQuery.WherePhrase.WhereOperator = *op
-	qb.SQLQuery.WherePhrase.FinalWherePhrase = fmt.Sprintf("%s %s", qb.SQLQuery.WherePhrase.whereKeyword, qb.SQLQuery.WherePhrase.WhereOperator.FinalOperatorPhrase)
+	qb.SQLQuery.WherePhrase.FinalWherePhrase = fmt.Sprintf("%s %s ", qb.SQLQuery.WherePhrase.whereKeyword, qb.SQLQuery.WherePhrase.WhereOperator.FinalOperatorPhrase)
 }

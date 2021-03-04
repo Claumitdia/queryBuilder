@@ -1,5 +1,11 @@
 package querybuilder
 
+/*
+This package contains literals to be used by SQL language to construct the Select queries for LANTERN Api. There are no multiple joins with tables.
+Single table query capability, with group by, having and order by capabilities.
+*/
+
+//SQLLanguageLiterals is a construct of what the literal struct  should look like
 type SQLLanguageLiterals struct {
 	Language         string // DRUID or POSTGRESQL
 	TimestampLiteral string // TO_TIMESTAMP('str', 'format') for postgres and TIMESTAMP 'str' for druid
@@ -43,6 +49,7 @@ type SQLLanguageLiterals struct {
 	NotEqualToInt    string
 	EqualToString    string
 	NotEqualToString string
+	ByTimeBucket     string
 }
 
 //DruidSQLLanguageLiterals has all keywords understood in druid sql
@@ -67,13 +74,13 @@ var DruidSQLLanguageLiterals = SQLLanguageLiterals{
 	OrderByKeyWord:   "ORDER BY",
 	AscKeyword:       "ASC",
 	DescKeyword:      "DESC",
-	Alias:            "AS",
-	Avg:              "AVG",
-	Min:              "MIN",
-	Max:              "Max",
-	Sum:              "SUM",
-	Round:            "ROUND",
-	Count:            "COUNT",
+	Alias:            " AS %s",
+	Avg:              " AVG(%s)",
+	Min:              " MIN(%s)",
+	Max:              " MAX(%s)",
+	Sum:              " SUM (%s)",
+	Round:            " ROUND(%s,2)",
+	Count:            " COUNT(%s)",
 	Gt:               "%s > %v",
 	Lt:               "%s < %v",
 	Gte:              "%s >= %v",
@@ -89,6 +96,7 @@ var DruidSQLLanguageLiterals = SQLLanguageLiterals{
 	NotEqualToInt:    "%s <> %v",
 	EqualToString:    "%s = '%v'",
 	NotEqualToString: "%s <> '%v'",
+	ByTimeBucket:     "FLOOR(%s to %s)",
 }
 
 //PGSQLLanguageLiterals has all keywords understood in postgresq pgsql
@@ -113,13 +121,13 @@ var PGSQLLanguageLiterals = SQLLanguageLiterals{
 	OrderByKeyWord:   " ORDER BY",
 	AscKeyword:       " ASC",
 	DescKeyword:      " DESC",
-	Alias:            " AS",
-	Avg:              " AVG",
-	Min:              " MIN",
-	Max:              " MAX",
-	Sum:              " SUM",
-	Round:            " ROUND",
-	Count:            " COUNT",
+	Alias:            " AS %s",
+	Avg:              " AVG(%s)",
+	Min:              " MIN(%s)",
+	Max:              " MAX(%s)",
+	Sum:              " SUM (%s)",
+	Round:            " ROUND(%s,2)",
+	Count:            " COUNT(%s)",
 	Gt:               "%s > %v",
 	Lt:               "%s < %v",
 	Gte:              "%s >= %v",
@@ -130,9 +138,10 @@ var PGSQLLanguageLiterals = SQLLanguageLiterals{
 	IsNull:           "IS NULL",
 	IsNotNull:        "IS NOT NULL",
 	NumberType:       []string{"bigint", "integer"},
-	StringType:       []string{"bytea", "character varying"},
+	StringType:       []string{"bytea", "character varying", "text"},
 	EqualToInt:       "%s = %v",
 	NotEqualToInt:    "%s <> %v",
 	EqualToString:    "%s = '%v'",
 	NotEqualToString: "%s <> '%v'",
+	ByTimeBucket:     "DATE_TRUNC('%s',%s)",
 }
