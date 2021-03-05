@@ -114,6 +114,7 @@ func HandlerFuncPg(w http.ResponseWriter, r *http.Request) {
 
 	var pgQueryBuilder q.Obj
 	pgQueryBuilder.SQLLanguageLiterals = q.PGSQLLanguageLiterals
+	pgQueryBuilder.SQLQuery.SQLColumnTypes = ColumnDataType
 	pgQueryBuilder.SQLBuilderFromURL(queryParametersURLValues)
 	pgQuery, _ := pgQueryBuilder.QueryBuilderFunc()
 	log.Println(pgQuery)

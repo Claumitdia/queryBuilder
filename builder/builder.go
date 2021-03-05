@@ -2,7 +2,6 @@ package querybuilder
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log"
 	"net/url"
@@ -36,6 +35,8 @@ func (qb *Obj) SQLBuilderFromURL(queryParametersURLValues url.Values) {
 	delete(queryParametersURLValues, "endTime")
 	var selectColumnNameObjList []ColumnNameStruct
 	var groupByColumnNameObjList []ColumnNameStruct
+	havingColumnNameObjList := map[string]string{}
+
 	groupByNeed := false
 
 	for key, val := range queryParametersURLValues {
@@ -78,9 +79,11 @@ func (qb *Obj) SQLBuilderFromURL(queryParametersURLValues url.Values) {
 				cft.BuildColumnFunctionTypeObj(qb.returnFunctionName(colFunc), "")
 				columnNameObj.BuildColumnNameStructObj(colName, "", colAlias, cft)
 				selectColumnNameObjList = append(selectColumnNameObjList, columnNameObj)
-				log.Println(groupByNeed)
+				if colFunc != "" {
+					columnNameObj.BuildColumnNameStructObj(colName, "", "", cft)
+					havingColumnNameObjList[colName] = columnNameObj.FinalColumnNamePhrase
+				}
 				if colFunc == "" {
-					log.Println("column to group by :", colName)
 					columnNameObj.BuildColumnNameStructObj(colName, "", "", cft)
 					groupByColumnNameObjList = append(groupByColumnNameObjList, columnNameObj)
 				}
@@ -110,99 +113,129 @@ func (qb *Obj) SQLBuilderFromURL(queryParametersURLValues url.Values) {
 			qb.BuildWhere(&opObjStartime, qb.SQLLanguageLiterals.WhereKeyword)
 			opObjEndTime.BuildOperatorString(columnNameObj, qb.SQLQuery.EndTime, qb.SQLLanguageLiterals.Lte, qb.SQLLanguageLiterals.Language)
 			qb.SQLQuery.OperatorPhrase = map[int][]string{
-				100: {fmt.Sprintf(" %s ", qb.SQLLanguageLiterals.AndKeyword) + opObjEndTime.FinalOperatorPhrase},
+				0: {fmt.Sprintf(" %s ", qb.SQLLanguageLiterals.AndKeyword) + opObjEndTime.FinalOperatorPhrase},
 			}
 		} else if key == "dataSource" {
 			qb.SQLQuery.SQLTableName = val[0]
-
+			qb.BuildFrom()
 		}
 	}
-
-	qb.BuildFrom()
 
 	delete(queryParametersURLValues, "startTime")
 	delete(queryParametersURLValues, "limit")
 	delete(queryParametersURLValues, "dataSource")
 	delete(queryParametersURLValues, "by")
 
-	groupNumForJSON := 0
+	groupNumForJSON := 1
+	var having bool
+	var newKey string
+
+	qb.SQLQuery.HavingPhrase = map[int][]string{}
+
+	//Last bit of processing
+	countOfQueryParameters := 0
+	countOfHavingQueryParameters := 0
 
 	for key, val := range queryParametersURLValues {
+
 		if key != "column" {
+			if len(havingColumnNameObjList) != 0 {
+				if _, ok := havingColumnNameObjList[key]; ok {
+					having = true
+					countOfHavingQueryParameters++
+					if countOfHavingQueryParameters == 1 {
+						qb.SQLQuery.HavingPhrase[groupNumForJSON] = append(qb.SQLQuery.HavingPhrase[groupNumForJSON], fmt.Sprintf(" %s ", qb.SQLLanguageLiterals.HavingKeyword))
+					} else if countOfHavingQueryParameters > 1 {
+						qb.SQLQuery.HavingPhrase[groupNumForJSON] = append(qb.SQLQuery.HavingPhrase[groupNumForJSON], fmt.Sprintf(" %s ", qb.SQLLanguageLiterals.AndKeyword))
+					}
+				} else {
+					having = false
+					countOfQueryParameters++
+				}
+			} else {
+				having = false
+				countOfQueryParameters++
+			}
+			log.Printf("key : %v, Value:%v, countOfHavingQueryParameters:%v", key, val, countOfHavingQueryParameters)
+			//Adding 'HAVING ' for first condition in having clause
+			//Adding 'AND ' for the first condition in normal condition clause
+
 			for _, singleVal := range val {
+				if having {
+					qb.SQLQuery.HavingPhrase[groupNumForJSON] = append(qb.SQLQuery.HavingPhrase[groupNumForJSON], "(")
+				} else {
+					qb.SQLQuery.OperatorPhrase[groupNumForJSON] = append(qb.SQLQuery.OperatorPhrase[groupNumForJSON], fmt.Sprintf(" %s (", qb.SQLLanguageLiterals.AndKeyword))
+				}
 				if string(singleVal[0]) == "{" && string(singleVal[len(singleVal)-1]) == "}" {
 					//process json
 					if qb.columnIsString(key) {
+						log.Println("is a string ")
 						var typeStruct StringJSON
 						_ = json.Unmarshal([]byte(singleVal), &typeStruct)
-						qb.SQLQuery.OperatorPhrase[groupNumForJSON] = []string{fmt.Sprintf(" %s ", qb.SQLLanguageLiterals.AndKeyword)}
-						qb.processStringJSONInput(key, typeStruct, groupNumForJSON)
-						qb.SQLQuery.OperatorPhrase[groupNumForJSON] = append(qb.SQLQuery.OperatorPhrase[groupNumForJSON], ")")
+						if having {
+							newKey = havingColumnNameObjList[key]
+						} else {
+							newKey = key
+						}
+						qb.processStringJSONInput(newKey, typeStruct, groupNumForJSON, having)
 					} else if qb.columnIsInt(key) {
+						log.Println("is a int ")
 						var typeStruct IntJSON
 						_ = json.Unmarshal([]byte(singleVal), &typeStruct)
-						qb.SQLQuery.OperatorPhrase[groupNumForJSON] = []string{fmt.Sprintf(" %s ", qb.SQLLanguageLiterals.AndKeyword)}
-						qb.processIntJSONInput(key, typeStruct, groupNumForJSON)
-						qb.SQLQuery.OperatorPhrase[groupNumForJSON] = append(qb.SQLQuery.OperatorPhrase[groupNumForJSON], ")")
+						if having {
+							newKey = havingColumnNameObjList[key]
+						} else {
+							newKey = key
+						}
+						qb.processIntJSONInput(newKey, typeStruct, groupNumForJSON, having)
 					}
 				} else {
+					log.Println("is a int else  ")
 					//process array
 					stringArray := s.Split(singleVal, ",")
+					log.Println(key)
+					log.Println(qb.columnIsInt(key))
+					log.Println(qb.SQLLanguageLiterals.Language)
 					if qb.columnIsInt(key) {
+						log.Println("is a int ")
 						var intArrayInput []float64
 						for _, vali := range stringArray {
 							j, jerr := strconv.ParseFloat(vali, 64)
+							log.Println(j)
 							if jerr != nil {
+								log.Println("intArrayInputErr :", jerr)
 								log.Println(jerr)
 							}
 							intArrayInput = append(intArrayInput, j)
 						}
-						qb.processIntArrayInput(key, intArrayInput, groupNumForJSON)
+						if having {
+							newKey = havingColumnNameObjList[key]
+						} else {
+							newKey = key
+						}
+						log.Println("intArrayInput:", intArrayInput)
+						qb.processIntArrayInput(newKey, intArrayInput, groupNumForJSON, having)
 					} else if qb.columnIsString(key) {
-						qb.processStringArrayInput(key, stringArray, groupNumForJSON)
+						log.Println("is a string ")
+						if having {
+							newKey = havingColumnNameObjList[key]
+						} else {
+							newKey = key
+						}
+						qb.processStringArrayInput(newKey, stringArray, groupNumForJSON, having)
 					}
+				}
+				if having {
+					qb.SQLQuery.HavingPhrase[groupNumForJSON] = append(qb.SQLQuery.HavingPhrase[groupNumForJSON], ") ")
+				} else {
+					qb.SQLQuery.OperatorPhrase[groupNumForJSON] = append(qb.SQLQuery.OperatorPhrase[groupNumForJSON], ") ")
 				}
 				groupNumForJSON++
 			}
 		}
+		// countOfQueryParameters = 0
 	}
 
-}
-
-//QueryBuilderFunc - joins all phrases of QueryBuilder.SQLQuery to form final query string
-func (qb *Obj) QueryBuilderFunc() (string, error) {
-	var finalQuery string
-	if qb.SQLQuery.SelectPhrase.FinalSelectPhrase != "" {
-		finalQuery = qb.SQLQuery.SelectPhrase.FinalSelectPhrase
-		if qb.SQLQuery.FromPhrase.FinalFromPhrase != "" {
-			finalQuery += qb.SQLQuery.FromPhrase.FinalFromPhrase
-			if qb.SQLQuery.WherePhrase.FinalWherePhrase != "" {
-				finalQuery += qb.SQLQuery.WherePhrase.FinalWherePhrase
-				//for and and or
-				for _, opPhrase := range qb.SQLQuery.OperatorPhrase {
-					for _, o := range opPhrase {
-						finalQuery += o
-					}
-				}
-				if qb.SQLQuery.GroupByPhrase.FinalGroupByPhrase != "" {
-					finalQuery += qb.SQLQuery.GroupByPhrase.FinalGroupByPhrase
-					if qb.SQLQuery.HavingPhrase.FinalHavingPhrase != "" {
-						finalQuery += qb.SQLQuery.HavingPhrase.FinalHavingPhrase
-					}
-				}
-				if qb.SQLQuery.OrderByPhrase.FinalOrderByPhrase != "" {
-					finalQuery += qb.SQLQuery.OrderByPhrase.FinalOrderByPhrase
-				}
-
-			}
-			if qb.SQLQuery.LimitPhrase.FinalLimitPhrase != "" {
-				finalQuery += qb.SQLQuery.LimitPhrase.FinalLimitPhrase
-			}
-			return finalQuery, nil
-		}
-		return "", errors.New("ErrorQueryBuilder: No from clause")
-	}
-	return "", errors.New("ErrorQueryBuilder: No Query")
 }
 
 func (qb *Obj) returnFunctionName(functionName string) string {

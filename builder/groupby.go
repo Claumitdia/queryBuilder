@@ -2,7 +2,6 @@ package querybuilder
 
 import (
 	"fmt"
-	"log"
 	s "strings"
 )
 
@@ -22,9 +21,6 @@ func (qb *Obj) BuildGroupBy(columnList []ColumnNameStruct) {
 	for _, col := range columnList {
 		joinedStr = append(joinedStr, col.FinalColumnNamePhrase)
 	}
-
 	finalColumnList := s.Join(joinedStr, ",")
-
 	qb.SQLQuery.GroupByPhrase.FinalGroupByPhrase = fmt.Sprintf(" %s %s ", qb.SQLQuery.GroupByPhrase.GroupByKeyword, finalColumnList)
-	log.Println("final group by phrase: ", qb.SQLQuery.GroupByPhrase.FinalGroupByPhrase)
 }
