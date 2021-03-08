@@ -12,8 +12,8 @@ type SelectStruct struct {
 }
 
 //BuildSelect is a function to build the select statement
-func (qb *Obj) BuildSelect(columnList []ColumnNameStruct, selectKeyWord string) {
-	qb.SQLQuery.SelectPhrase.selectKeyword = selectKeyWord
+func (qb *Obj) BuildSelect(columnList []ColumnNameStruct) {
+	qb.SQLQuery.SelectPhrase.selectKeyword = qb.SQLLanguageLiterals.SelectKeyword
 	qb.SQLQuery.SelectPhrase.columnNames = columnList
 
 	var joinedStr []string

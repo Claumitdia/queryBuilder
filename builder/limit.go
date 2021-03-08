@@ -10,8 +10,8 @@ type LimitStruct struct {
 }
 
 // BuildLimit is a function to build the limit clause
-func (qb *Obj) BuildLimit(limitVal int, limitKeyWord string) {
-	qb.SQLQuery.LimitPhrase.LimiKeyword = limitKeyWord
+func (qb *Obj) BuildLimit(limitVal int) {
+	qb.SQLQuery.LimitPhrase.LimiKeyword = qb.SQLLanguageLiterals.LimitKeyWord
 	qb.SQLQuery.LimitPhrase.LimitValue = limitVal
 	qb.SQLQuery.LimitPhrase.FinalLimitPhrase = fmt.Sprintf("%s %d ", qb.SQLQuery.LimitPhrase.LimiKeyword, qb.SQLQuery.LimitPhrase.LimitValue)
 }

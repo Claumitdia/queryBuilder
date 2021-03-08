@@ -25,14 +25,7 @@ type Obj struct {
 
 //SQLBuilderFromURL - fills QueryBuilder.SQLQuery with all phrases
 func (qb *Obj) SQLBuilderFromURL(queryParametersURLValues url.Values) {
-	if len(queryParametersURLValues["endTime"]) == 0 {
-		qb.calculateStartEndTime(queryParametersURLValues["startTime"][0], time.Now().Local().Format("2006-01-02 15:04:05"))
-	} else {
-		qb.calculateStartEndTime(queryParametersURLValues["startTime"][0], queryParametersURLValues["endTime"][0])
-	}
 
-	//since already considered we can delete, will be present in sql query object of qb
-	delete(queryParametersURLValues, "endTime")
 	var selectColumnNameObjList []ColumnNameStruct
 	var groupByColumnNameObjList []ColumnNameStruct
 	havingColumnNameObjList := map[string]string{}
@@ -44,193 +37,137 @@ func (qb *Obj) SQLBuilderFromURL(queryParametersURLValues url.Values) {
 		groupByNeed = true
 		selectColumnNameObjList, groupByColumnNameObjList = qb.urlProcessBy(queryParametersURLValues["by"][0], selectColumnNameObjList, groupByColumnNameObjList)
 	}
-
-	for key, val := range queryParametersURLValues {
-		if key == "column" {
-			selectColumnList := s.Split(val[0], ",")
-			var colName string
-			var colFunc string
-			var colAlias string
-			for _, c := range selectColumnList {
-
-				if s.Index(c, ".") != -1 {
-					if !groupByNeed && len(selectColumnList) > 1 {
-						groupByNeed = true
-					}
-					colName = c[:s.Index(c, ".")]
-					colFunc = c[(s.Index(c, ".") + 1):]
-					colAlias = c
-				} else {
-					colName = c
-					colFunc = ""
-					colAlias = ""
-				}
-				columnNameObj := ColumnNameStruct{}
-				cft := ColumnFunctionType{}
-
-				cft.BuildColumnFunctionTypeObj(qb.returnFunctionName(colFunc), "")
-				columnNameObj.BuildColumnNameStructObj(colName, "", colAlias, cft)
-				selectColumnNameObjList = append(selectColumnNameObjList, columnNameObj)
-				if colFunc != "" {
-					columnNameObj.BuildColumnNameStructObj(colName, "", "", cft)
-					havingColumnNameObjList[colName] = columnNameObj.FinalColumnNamePhrase
-				}
-				if colFunc == "" {
-					columnNameObj.BuildColumnNameStructObj(colName, "", "", cft)
-					groupByColumnNameObjList = append(groupByColumnNameObjList, columnNameObj)
-				}
-			}
-
-			if groupByNeed == true && len(selectColumnList) == 1 {
-				groupByColumnNameObjList = nil
-			}
-
-			//check if group by needed, if not true , empty the already filled list
-			if !groupByNeed {
-				groupByColumnNameObjList = []ColumnNameStruct{}
-			} else {
-				qb.BuildGroupBy(groupByColumnNameObjList)
-			}
-			qb.BuildSelect(selectColumnNameObjList, qb.SQLLanguageLiterals.SelectKeyword)
-		} else if key == "limit" {
-			limitVal, limitValErr := strconv.Atoi(val[0])
-			if limitValErr != nil {
-				panic(limitValErr)
-			}
-			qb.BuildLimit(limitVal, qb.SQLLanguageLiterals.LimitKeyWord)
-		} else if key == "startTime" {
-			//where
-			var opObjStartime OperatorStruct
-			var opObjEndTime OperatorStruct
-			columnNameObj := ColumnNameStruct{}
-			cft := ColumnFunctionType{}
-			cft.BuildColumnFunctionTypeObj("", "")
-			columnNameObj.BuildColumnNameStructObj(qb.SQLLanguageLiterals.TimeFieldName, "timestamp", "", cft)
-			opObjStartime.BuildOperatorString(columnNameObj, qb.SQLQuery.StartTime, qb.SQLLanguageLiterals.Gte, qb.SQLLanguageLiterals.Language)
-			qb.BuildWhere(&opObjStartime, qb.SQLLanguageLiterals.WhereKeyword)
-			opObjEndTime.BuildOperatorString(columnNameObj, qb.SQLQuery.EndTime, qb.SQLLanguageLiterals.Lte, qb.SQLLanguageLiterals.Language)
-			qb.SQLQuery.OperatorPhrase = map[int][]string{
-				0: {fmt.Sprintf(" %s ", qb.SQLLanguageLiterals.AndKeyword) + opObjEndTime.FinalOperatorPhrase},
-			}
-		} else if key == "dataSource" {
-			qb.SQLQuery.SQLTableName = val[0]
-			qb.BuildFrom()
-		}
+	log.Println("select stuff: ", selectColumnNameObjList)
+	log.Println("group by stuff: ", groupByColumnNameObjList)
+	//process 'column'
+	if len(queryParametersURLValues["column"]) != 0 {
+		selectColumnNameObjList, groupByColumnNameObjList, havingColumnNameObjList = qb.urlProcessColumn(queryParametersURLValues["column"][0], selectColumnNameObjList, groupByColumnNameObjList, havingColumnNameObjList, groupByNeed)
 	}
 
+	log.Println("group by stuff: ", groupByColumnNameObjList)
+	qb.SQLQuery.SQLTableName = queryParametersURLValues["dataSource"][0]
+	qb.BuildFrom()
+	qb.BuildSelect(selectColumnNameObjList)
+	qb.BuildGroupBy(groupByColumnNameObjList)
+	//process 'limit'
+	if len(queryParametersURLValues["limit"]) != 0 {
+		qb.BuildLimit(qb.urlProcessLimit(queryParametersURLValues["limit"][0]))
+	}
+
+	if len(queryParametersURLValues["endTime"]) == 0 {
+		qb.calculateStartEndTime(queryParametersURLValues["startTime"][0], time.Now().Local().Format("2006-01-02 15:04:05"))
+	} else {
+		qb.calculateStartEndTime(queryParametersURLValues["startTime"][0], queryParametersURLValues["endTime"][0])
+	}
+	qb.urlProcessStartTime()
+	//since already considered we can delete, will be present in sql query object of qb
+	delete(queryParametersURLValues, "endTime")
 	delete(queryParametersURLValues, "startTime")
 	delete(queryParametersURLValues, "limit")
 	delete(queryParametersURLValues, "dataSource")
 	delete(queryParametersURLValues, "by")
-
+	delete(queryParametersURLValues, "column")
 	groupNumForJSON := 1
-	var having bool
-	var newKey string
-
-	qb.SQLQuery.HavingPhrase = map[int][]string{}
-
-	//Last bit of processing
 	countOfQueryParameters := 0
 	countOfHavingQueryParameters := 0
+	var having bool
+	var newKey string
+	qb.SQLQuery.HavingPhrase = map[int][]string{}
+	//Last bit of processing
 
 	for key, val := range queryParametersURLValues {
-
-		if key != "column" {
-			if len(havingColumnNameObjList) != 0 {
-				if _, ok := havingColumnNameObjList[key]; ok {
-					having = true
-					countOfHavingQueryParameters++
-					if countOfHavingQueryParameters == 1 {
-						qb.SQLQuery.HavingPhrase[groupNumForJSON] = append(qb.SQLQuery.HavingPhrase[groupNumForJSON], fmt.Sprintf(" %s ", qb.SQLLanguageLiterals.HavingKeyword))
-					} else if countOfHavingQueryParameters > 1 {
-						qb.SQLQuery.HavingPhrase[groupNumForJSON] = append(qb.SQLQuery.HavingPhrase[groupNumForJSON], fmt.Sprintf(" %s ", qb.SQLLanguageLiterals.AndKeyword))
-					}
-				} else {
-					having = false
-					countOfQueryParameters++
+		//Adding 'HAVING ' for first condition in having clause
+		//Adding 'AND ' for the first condition in normal condition clause
+		if len(havingColumnNameObjList) != 0 {
+			if _, ok := havingColumnNameObjList[key]; ok {
+				having = true
+				countOfHavingQueryParameters++
+				if countOfHavingQueryParameters == 1 {
+					qb.SQLQuery.HavingPhrase[groupNumForJSON] = append(qb.SQLQuery.HavingPhrase[groupNumForJSON], fmt.Sprintf(" %s ", qb.SQLLanguageLiterals.HavingKeyword))
+				} else if countOfHavingQueryParameters > 1 {
+					qb.SQLQuery.HavingPhrase[groupNumForJSON] = append(qb.SQLQuery.HavingPhrase[groupNumForJSON], fmt.Sprintf(" %s ", qb.SQLLanguageLiterals.AndKeyword))
 				}
 			} else {
 				having = false
 				countOfQueryParameters++
 			}
-			// log.Printf("key : %v, Value:%v, countOfHavingQueryParameters:%v", key, val, countOfHavingQueryParameters)
-			//Adding 'HAVING ' for first condition in having clause
-			//Adding 'AND ' for the first condition in normal condition clause
-
-			for _, singleVal := range val {
-				if having {
-					qb.SQLQuery.HavingPhrase[groupNumForJSON] = append(qb.SQLQuery.HavingPhrase[groupNumForJSON], "(")
-				} else {
-					qb.SQLQuery.OperatorPhrase[groupNumForJSON] = append(qb.SQLQuery.OperatorPhrase[groupNumForJSON], fmt.Sprintf(" %s (", qb.SQLLanguageLiterals.AndKeyword))
-				}
-				if string(singleVal[0]) == "{" && string(singleVal[len(singleVal)-1]) == "}" {
-					//process json
-					if qb.columnIsString(key) {
-						// log.Println("is a string ")
-						var typeStruct StringJSON
-						_ = json.Unmarshal([]byte(singleVal), &typeStruct)
-						if having {
-							newKey = havingColumnNameObjList[key]
-						} else {
-							newKey = key
-						}
-						qb.processStringJSONInput(newKey, typeStruct, groupNumForJSON, having)
-					} else if qb.columnIsInt(key) {
-						// log.Println("is a int ")
-						var typeStruct IntJSON
-						_ = json.Unmarshal([]byte(singleVal), &typeStruct)
-						if having {
-							newKey = havingColumnNameObjList[key]
-						} else {
-							newKey = key
-						}
-						qb.processIntJSONInput(newKey, typeStruct, groupNumForJSON, having)
-					}
-				} else {
-					// log.Println("is a int else  ")
-					//process array
-					stringArray := s.Split(singleVal, ",")
-					// log.Println(key)
-					// log.Println(qb.columnIsInt(key))
-					// log.Println(qb.SQLLanguageLiterals.Language)
-					if qb.columnIsInt(key) {
-						// log.Println("is a int ")
-						var intArrayInput []float64
-						for _, vali := range stringArray {
-							j, jerr := strconv.ParseFloat(vali, 64)
-							// log.Println(j)
-							if jerr != nil {
-								// log.Println("intArrayInputErr :", jerr)
-								log.Println(jerr)
-							}
-							intArrayInput = append(intArrayInput, j)
-						}
-						if having {
-							newKey = havingColumnNameObjList[key]
-						} else {
-							newKey = key
-						}
-						// log.Println("intArrayInput:", intArrayInput)
-						qb.processIntArrayInput(newKey, intArrayInput, groupNumForJSON, having)
-					} else if qb.columnIsString(key) {
-						// log.Println("is a string ")
-						if having {
-							newKey = havingColumnNameObjList[key]
-						} else {
-							newKey = key
-						}
-						qb.processStringArrayInput(newKey, stringArray, groupNumForJSON, having)
-					}
-				}
-				if having {
-					qb.SQLQuery.HavingPhrase[groupNumForJSON] = append(qb.SQLQuery.HavingPhrase[groupNumForJSON], ") ")
-				} else {
-					qb.SQLQuery.OperatorPhrase[groupNumForJSON] = append(qb.SQLQuery.OperatorPhrase[groupNumForJSON], ") ")
-				}
-				groupNumForJSON++
-			}
+		} else {
+			having = false
+			countOfQueryParameters++
 		}
-		// countOfQueryParameters = 0
+
+		for _, singleVal := range val {
+			if having {
+				qb.SQLQuery.HavingPhrase[groupNumForJSON] = append(qb.SQLQuery.HavingPhrase[groupNumForJSON], "(")
+			} else {
+				qb.SQLQuery.OperatorPhrase[groupNumForJSON] = append(qb.SQLQuery.OperatorPhrase[groupNumForJSON], fmt.Sprintf(" %s (", qb.SQLLanguageLiterals.AndKeyword))
+			}
+			if string(singleVal[0]) == "{" && string(singleVal[len(singleVal)-1]) == "}" {
+				//process json
+				if qb.columnIsString(key) {
+					// log.Println("is a string ")
+					var typeStruct StringJSON
+					_ = json.Unmarshal([]byte(singleVal), &typeStruct)
+					if having {
+						newKey = havingColumnNameObjList[key]
+					} else {
+						newKey = key
+					}
+					qb.processStringJSONInput(newKey, typeStruct, groupNumForJSON, having)
+				} else if qb.columnIsInt(key) {
+					// log.Println("is a int ")
+					var typeStruct IntJSON
+					_ = json.Unmarshal([]byte(singleVal), &typeStruct)
+					if having {
+						newKey = havingColumnNameObjList[key]
+					} else {
+						newKey = key
+					}
+					qb.processIntJSONInput(newKey, typeStruct, groupNumForJSON, having)
+				}
+			} else {
+				// log.Println("is a int else  ")
+				//process array
+				stringArray := s.Split(singleVal, ",")
+				// log.Println(key)
+				// log.Println(qb.columnIsInt(key))
+				// log.Println(qb.SQLLanguageLiterals.Language)
+				if qb.columnIsInt(key) {
+					// log.Println("is a int ")
+					var intArrayInput []float64
+					for _, vali := range stringArray {
+						j, jerr := strconv.ParseFloat(vali, 64)
+						// log.Println(j)
+						if jerr != nil {
+							// log.Println("intArrayInputErr :", jerr)
+							log.Println(jerr)
+						}
+						intArrayInput = append(intArrayInput, j)
+					}
+					if having {
+						newKey = havingColumnNameObjList[key]
+					} else {
+						newKey = key
+					}
+					// log.Println("intArrayInput:", intArrayInput)
+					qb.processIntArrayInput(newKey, intArrayInput, groupNumForJSON, having)
+				} else if qb.columnIsString(key) {
+					// log.Println("is a string ")
+					if having {
+						newKey = havingColumnNameObjList[key]
+					} else {
+						newKey = key
+					}
+					qb.processStringArrayInput(newKey, stringArray, groupNumForJSON, having)
+				}
+			}
+			if having {
+				qb.SQLQuery.HavingPhrase[groupNumForJSON] = append(qb.SQLQuery.HavingPhrase[groupNumForJSON], ") ")
+			} else {
+				qb.SQLQuery.OperatorPhrase[groupNumForJSON] = append(qb.SQLQuery.OperatorPhrase[groupNumForJSON], ") ")
+			}
+			groupNumForJSON++
+		}
 	}
 
 }
@@ -262,4 +199,66 @@ func (qb *Obj) urlProcessBy(val string, selectColumnNameObjList []ColumnNameStru
 	groupByColumnNameObj.BuildColumnNameStructObj(qb.SQLLanguageLiterals.TimeFieldName, "", "", cft)
 	groupByColumnNameObjList = append(groupByColumnNameObjList, groupByColumnNameObj)
 	return selectColumnNameObjList, groupByColumnNameObjList
+}
+
+func (qb *Obj) urlProcessColumn(val string, selectColumnNameObjList []ColumnNameStruct, groupByColumnNameObjList []ColumnNameStruct, havingColumnNameObjList map[string]string, groupByNeed bool) ([]ColumnNameStruct, []ColumnNameStruct, map[string]string) {
+	selectColumnList := s.Split(val, ",")
+	var colName string
+	var colFunc string
+	var colAlias string
+	for _, c := range selectColumnList {
+		if s.Index(c, ".") != -1 {
+			if !groupByNeed && len(selectColumnList) > 1 {
+				groupByNeed = true
+			}
+			colName = c[:s.Index(c, ".")]
+			colFunc = c[(s.Index(c, ".") + 1):]
+			colAlias = c
+		} else {
+			colName = c
+			colFunc = ""
+			colAlias = ""
+		}
+		columnNameObj := ColumnNameStruct{}
+		cft := ColumnFunctionType{}
+
+		cft.BuildColumnFunctionTypeObj(qb.returnFunctionName(colFunc), "")
+		columnNameObj.BuildColumnNameStructObj(colName, "", colAlias, cft)
+		selectColumnNameObjList = append(selectColumnNameObjList, columnNameObj)
+		if colFunc != "" {
+			columnNameObj.BuildColumnNameStructObj(colName, "", "", cft)
+			havingColumnNameObjList[colName] = columnNameObj.FinalColumnNamePhrase
+		}
+		if colFunc == "" {
+			columnNameObj.BuildColumnNameStructObj(colName, "", "", cft)
+			groupByColumnNameObjList = append(groupByColumnNameObjList, columnNameObj)
+		}
+	}
+	if (groupByNeed == true && len(selectColumnList) == 0) || !groupByNeed {
+		groupByColumnNameObjList = nil
+	}
+	return selectColumnNameObjList, groupByColumnNameObjList, havingColumnNameObjList
+}
+
+func (qb *Obj) urlProcessLimit(val string) int {
+	limitVal, limitValErr := strconv.Atoi(val)
+	if limitValErr != nil {
+		panic(limitValErr)
+	}
+	return limitVal
+}
+
+func (qb *Obj) urlProcessStartTime() {
+	var opObjStartime OperatorStruct
+	var opObjEndTime OperatorStruct
+	columnNameObj := ColumnNameStruct{}
+	cft := ColumnFunctionType{}
+	cft.BuildColumnFunctionTypeObj("", "")
+	columnNameObj.BuildColumnNameStructObj(qb.SQLLanguageLiterals.TimeFieldName, "timestamp", "", cft)
+	opObjStartime.BuildOperatorString(columnNameObj, qb.SQLQuery.StartTime, qb.SQLLanguageLiterals.Gte, qb.SQLLanguageLiterals.Language)
+	qb.BuildWhere(&opObjStartime, qb.SQLLanguageLiterals.WhereKeyword)
+	opObjEndTime.BuildOperatorString(columnNameObj, qb.SQLQuery.EndTime, qb.SQLLanguageLiterals.Lte, qb.SQLLanguageLiterals.Language)
+	qb.SQLQuery.OperatorPhrase = map[int][]string{
+		0: {fmt.Sprintf(" %s ", qb.SQLLanguageLiterals.AndKeyword) + opObjEndTime.FinalOperatorPhrase},
+	}
 }
