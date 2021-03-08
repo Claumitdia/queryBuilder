@@ -39,22 +39,14 @@ func (qb *Obj) SQLBuilderFromURL(queryParametersURLValues url.Values) {
 
 	groupByNeed := false
 
+	//process 'by'
+	if len(queryParametersURLValues["by"]) != 0 {
+		groupByNeed = true
+		selectColumnNameObjList, groupByColumnNameObjList = qb.urlProcessBy(queryParametersURLValues["by"][0], selectColumnNameObjList, groupByColumnNameObjList)
+	}
+
 	for key, val := range queryParametersURLValues {
-		if key == "by" {
-			//only second,minute,hour,day,week,month,quarter,year allowed
-			groupByNeed = true
-
-			selectColumnNameObj := ColumnNameStruct{}
-			groupByColumnNameObj := selectColumnNameObj
-			cft := ColumnFunctionType{}
-			cft.BuildRollUpObj(qb.SQLLanguageLiterals.ByTimeBucket, "", val[0], qb.SQLLanguageLiterals.Language)
-
-			selectColumnNameObj.BuildColumnNameStructObj(qb.SQLLanguageLiterals.TimeFieldName, "", "time_bucket", cft)
-			selectColumnNameObjList = append(selectColumnNameObjList, selectColumnNameObj)
-
-			groupByColumnNameObj.BuildColumnNameStructObj(qb.SQLLanguageLiterals.TimeFieldName, "", "", cft)
-			groupByColumnNameObjList = append(groupByColumnNameObjList, groupByColumnNameObj)
-		} else if key == "column" {
+		if key == "column" {
 			selectColumnList := s.Split(val[0], ",")
 			var colName string
 			var colFunc string
@@ -62,7 +54,7 @@ func (qb *Obj) SQLBuilderFromURL(queryParametersURLValues url.Values) {
 			for _, c := range selectColumnList {
 
 				if s.Index(c, ".") != -1 {
-					if !groupByNeed {
+					if !groupByNeed && len(selectColumnList) > 1 {
 						groupByNeed = true
 					}
 					colName = c[:s.Index(c, ".")]
@@ -88,6 +80,11 @@ func (qb *Obj) SQLBuilderFromURL(queryParametersURLValues url.Values) {
 					groupByColumnNameObjList = append(groupByColumnNameObjList, columnNameObj)
 				}
 			}
+
+			if groupByNeed == true && len(selectColumnList) == 1 {
+				groupByColumnNameObjList = nil
+			}
+
 			//check if group by needed, if not true , empty the already filled list
 			if !groupByNeed {
 				groupByColumnNameObjList = []ColumnNameStruct{}
@@ -156,7 +153,7 @@ func (qb *Obj) SQLBuilderFromURL(queryParametersURLValues url.Values) {
 				having = false
 				countOfQueryParameters++
 			}
-			log.Printf("key : %v, Value:%v, countOfHavingQueryParameters:%v", key, val, countOfHavingQueryParameters)
+			// log.Printf("key : %v, Value:%v, countOfHavingQueryParameters:%v", key, val, countOfHavingQueryParameters)
 			//Adding 'HAVING ' for first condition in having clause
 			//Adding 'AND ' for the first condition in normal condition clause
 
@@ -169,7 +166,7 @@ func (qb *Obj) SQLBuilderFromURL(queryParametersURLValues url.Values) {
 				if string(singleVal[0]) == "{" && string(singleVal[len(singleVal)-1]) == "}" {
 					//process json
 					if qb.columnIsString(key) {
-						log.Println("is a string ")
+						// log.Println("is a string ")
 						var typeStruct StringJSON
 						_ = json.Unmarshal([]byte(singleVal), &typeStruct)
 						if having {
@@ -179,7 +176,7 @@ func (qb *Obj) SQLBuilderFromURL(queryParametersURLValues url.Values) {
 						}
 						qb.processStringJSONInput(newKey, typeStruct, groupNumForJSON, having)
 					} else if qb.columnIsInt(key) {
-						log.Println("is a int ")
+						// log.Println("is a int ")
 						var typeStruct IntJSON
 						_ = json.Unmarshal([]byte(singleVal), &typeStruct)
 						if having {
@@ -190,20 +187,20 @@ func (qb *Obj) SQLBuilderFromURL(queryParametersURLValues url.Values) {
 						qb.processIntJSONInput(newKey, typeStruct, groupNumForJSON, having)
 					}
 				} else {
-					log.Println("is a int else  ")
+					// log.Println("is a int else  ")
 					//process array
 					stringArray := s.Split(singleVal, ",")
-					log.Println(key)
-					log.Println(qb.columnIsInt(key))
-					log.Println(qb.SQLLanguageLiterals.Language)
+					// log.Println(key)
+					// log.Println(qb.columnIsInt(key))
+					// log.Println(qb.SQLLanguageLiterals.Language)
 					if qb.columnIsInt(key) {
-						log.Println("is a int ")
+						// log.Println("is a int ")
 						var intArrayInput []float64
 						for _, vali := range stringArray {
 							j, jerr := strconv.ParseFloat(vali, 64)
-							log.Println(j)
+							// log.Println(j)
 							if jerr != nil {
-								log.Println("intArrayInputErr :", jerr)
+								// log.Println("intArrayInputErr :", jerr)
 								log.Println(jerr)
 							}
 							intArrayInput = append(intArrayInput, j)
@@ -213,10 +210,10 @@ func (qb *Obj) SQLBuilderFromURL(queryParametersURLValues url.Values) {
 						} else {
 							newKey = key
 						}
-						log.Println("intArrayInput:", intArrayInput)
+						// log.Println("intArrayInput:", intArrayInput)
 						qb.processIntArrayInput(newKey, intArrayInput, groupNumForJSON, having)
 					} else if qb.columnIsString(key) {
-						log.Println("is a string ")
+						// log.Println("is a string ")
 						if having {
 							newKey = havingColumnNameObjList[key]
 						} else {
@@ -252,4 +249,17 @@ func (qb *Obj) returnFunctionName(functionName string) string {
 		return qb.SQLLanguageLiterals.Max
 	}
 	return ""
+}
+
+func (qb *Obj) urlProcessBy(val string, selectColumnNameObjList []ColumnNameStruct, groupByColumnNameObjList []ColumnNameStruct) ([]ColumnNameStruct, []ColumnNameStruct) {
+	//only second,minute,hour,day,week,month,quarter,year allowed
+	selectColumnNameObj := ColumnNameStruct{}
+	groupByColumnNameObj := selectColumnNameObj
+	cft := ColumnFunctionType{}
+	cft.BuildRollUpObj(qb.SQLLanguageLiterals.ByTimeBucket, "", val, qb.SQLLanguageLiterals.Language)
+	selectColumnNameObj.BuildColumnNameStructObj(qb.SQLLanguageLiterals.TimeFieldName, "", qb.SQLLanguageLiterals.TimeBucketAlias, cft)
+	selectColumnNameObjList = append(selectColumnNameObjList, selectColumnNameObj)
+	groupByColumnNameObj.BuildColumnNameStructObj(qb.SQLLanguageLiterals.TimeFieldName, "", "", cft)
+	groupByColumnNameObjList = append(groupByColumnNameObjList, groupByColumnNameObj)
+	return selectColumnNameObjList, groupByColumnNameObjList
 }

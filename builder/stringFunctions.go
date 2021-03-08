@@ -161,7 +161,7 @@ func (qb *Obj) processStringArrayInput(inputCol string, arrayInput []string, gro
 	columnFunctionItem.BuildColumnFunctionTypeObj("", "")
 	columnItem.BuildColumnNameStructObj(inputCol, "", "", columnFunctionItem)
 	operatorItem := OperatorStruct{}
-	log.Println("here in")
+	// log.Println("here in")
 	if having {
 		qb.SQLQuery.HavingPhrase[groupNum] = append(qb.SQLQuery.HavingPhrase[groupNum], "(")
 	} else {

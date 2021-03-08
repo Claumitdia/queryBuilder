@@ -2,7 +2,6 @@ package querybuilder
 
 import (
 	"fmt"
-	"log"
 )
 
 // IntJSON is a format for the json input
@@ -18,8 +17,8 @@ type IntJSON struct {
 
 func (qb *Obj) columnIsInt(columnName string) bool {
 	for _, columnType := range qb.SQLLanguageLiterals.NumberType {
-		log.Println("column type: ", columnType)
-		log.Println("qb.SQLQuery.SQLColumnTypes[columnName]:", qb.SQLQuery.SQLColumnTypes[columnName])
+		// log.Println("column type: ", columnType)
+		// log.Println("qb.SQLQuery.SQLColumnTypes[columnName]:", qb.SQLQuery.SQLColumnTypes[columnName])
 		if qb.SQLQuery.SQLColumnTypes[columnName] == columnType {
 			return true
 		}
@@ -67,7 +66,7 @@ func (qb *Obj) processIntArrayInput(inputCol string, arrayInput []float64, group
 
 func (qb *Obj) processIntJSONInput(inputCol string, jsonInput IntJSON, groupNum int, having bool) {
 	var operatorValue string
-	log.Println("inside processIntJSONInput")
+	// log.Println("inside processIntJSONInput")
 	if fmt.Sprintf("%v", jsonInput.Operator) != "<nil>" {
 		operatorValue = *jsonInput.Operator
 		if operatorValue == "and" || operatorValue == "AND" {
@@ -80,7 +79,7 @@ func (qb *Obj) processIntJSONInput(inputCol string, jsonInput IntJSON, groupNum 
 	}
 
 	countKeys := 0
-	log.Println("inside processIntJSONInput")
+	// log.Println("inside processIntJSONInput")
 	if fmt.Sprintf("%v", jsonInput.Gt) != "<nil>" {
 		countKeys++
 		var op string
@@ -95,7 +94,7 @@ func (qb *Obj) processIntJSONInput(inputCol string, jsonInput IntJSON, groupNum 
 		qb.appendIntOperatorClauseToFinalObj(inputCol, gtArray, qb.SQLLanguageLiterals.Gt, groupNum, having, op)
 	}
 
-	log.Println("inside processIntJSONInput")
+	// log.Println("inside processIntJSONInput")
 	if fmt.Sprintf("%v", jsonInput.Lt) != "<nil>" {
 		countKeys++
 		var ltArray *[]float64
@@ -112,18 +111,18 @@ func (qb *Obj) processIntJSONInput(inputCol string, jsonInput IntJSON, groupNum 
 		}
 	}
 	if fmt.Sprintf("%v", jsonInput.Gte) != "<nil>" {
-		log.Println("inside GTE")
+		// log.Println("inside GTE")
 		countKeys++
 		var ltArray *[]float64
 		ltArray = &[]float64{*jsonInput.Gte}
-		log.Println("ltArray: ", ltArray)
+		// log.Println("ltArray: ", ltArray)
 		var op string
 		if countKeys == 2 {
 			op = operatorValue
 		} else {
 			op = ""
 		}
-		log.Println("reached here")
+		// log.Println("reached here")
 		qb.appendIntOperatorClauseToFinalObj(inputCol, ltArray, qb.SQLLanguageLiterals.Gte, groupNum, having, op)
 		if countKeys == 2 {
 			return

@@ -50,6 +50,7 @@ type SQLLanguageLiterals struct {
 	EqualToString    string
 	NotEqualToString string
 	ByTimeBucket     string
+	TimeBucketAlias  string
 }
 
 //DruidSQLLanguageLiterals has all keywords understood in druid sql
@@ -97,6 +98,7 @@ var DruidSQLLanguageLiterals = SQLLanguageLiterals{
 	EqualToString:    "%s = '%v'",
 	NotEqualToString: "%s <> '%v'",
 	ByTimeBucket:     "FLOOR(%s to %s)",
+	TimeBucketAlias:  "time_bucket",
 }
 
 //PGSQLLanguageLiterals has all keywords understood in postgresq pgsql
@@ -144,4 +146,5 @@ var PGSQLLanguageLiterals = SQLLanguageLiterals{
 	EqualToString:    "%s = '%v'",
 	NotEqualToString: "%s <> '%v'",
 	ByTimeBucket:     "DATE_TRUNC('%s',%s)",
+	TimeBucketAlias:  "time_bucket",
 }
