@@ -47,3 +47,7 @@ func (d *DruidDbObj) DbQueryRun(queryString string) ([]map[string]string, error)
 	}
 	return data, nil
 }
+
+func (d *DruidDbObj) DbClose() error {
+	return nil
+}

@@ -7,15 +7,16 @@ import (
 	"log"
 	"net/http"
 	builder "queryBuilder/builder"
+	db "queryBuilder/database"
 	"time"
 )
 
 //Optimiser is an interface - will be implemented by optimisers for druid/pg/loginsight etc
 // Anything implementing Optimiser will implement these functions,
 type Optimiser interface {
-	GetTimeFrameBucket(builder.SQLQueryObj, *DbObj) (time.Duration, error)
-	QueryTransformer(builder.SQLQueryObj, timeBucket int) (map[int]string, error)
-	ProcessQueriesAndMerge(map[int]string, *DbObj) (interface{}, error)
+	GetTimeFrameBucket(sqlObj builder.SQLQueryObj, db db.DbObj) (time.Duration, error)
+	QueryTransformer(sqlObj builder.SQLQueryObj, timeBucket int) (map[int]string, error)
+	ProcessQueriesAndMerge(queryMap map[int]string, db db.DbObj) (interface{}, error)
 }
 
 //Limits will hold values like
@@ -36,7 +37,7 @@ type Obj struct {
 
 //GetTimeFrameBucket - function gets time frame bucket from query, in minutes/hours/seconds .TBD
 //This functions assumes the query is not one with group by, having clauses. but can have aggregate functions.
-func (o *Obj) GetTimeFrameBucket(sqlObj builder.Obj,dbObj DbObj) (int64, error) {
+func (o *Obj) GetTimeFrameBucket(sqlObj builder.Obj, dbObj db.DbObj) (int64, error) {
 	tempQueryBucket := sqlObj
 	tempQueryBucket.SQLQuery.StartTime = sqlObj.SQLQuery.StartTime
 	tempQueryBucket.SQLQuery.EndTime = sqlObj.SQLQuery.EndTime
