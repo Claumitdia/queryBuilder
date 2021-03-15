@@ -51,7 +51,8 @@ func (qb *Obj) SQLBuilderFromURL(queryParametersURLValues url.Values) {
 	qb.BuildGroupBy(groupByColumnNameObjList)
 	//process 'limit'
 	if len(queryParametersURLValues["limit"]) != 0 {
-		qb.BuildLimit(qb.urlProcessLimit(queryParametersURLValues["limit"][0]))
+		qb.SQLQuery.LimitPhrase.LimitValue = qb.urlProcessLimit(queryParametersURLValues["limit"][0])
+		qb.BuildLimit()
 	}
 
 	if len(queryParametersURLValues["endTime"]) == 0 {
@@ -59,7 +60,8 @@ func (qb *Obj) SQLBuilderFromURL(queryParametersURLValues url.Values) {
 	} else {
 		qb.calculateStartEndTime(queryParametersURLValues["startTime"][0], queryParametersURLValues["endTime"][0])
 	}
-	qb.urlProcessStartTime()
+	qb.SQLQuery.OperatorPhrase = map[int][]string{}
+	qb.UrlProcessStartTime()
 	//since already considered we can delete, will be present in sql query object of qb
 	delete(queryParametersURLValues, "endTime")
 	delete(queryParametersURLValues, "startTime")
@@ -215,7 +217,11 @@ func (qb *Obj) urlProcessColumn(val string, selectColumnNameObjList []ColumnName
 			colFunc = c[(s.Index(c, ".") + 1):]
 			colAlias = c
 		} else {
-			colName = c
+			if c == "all" {
+				colName = "*"
+			} else {
+				colName = c
+			}
 			colFunc = ""
 			colAlias = ""
 		}
@@ -248,7 +254,7 @@ func (qb *Obj) urlProcessLimit(val string) int {
 	return limitVal
 }
 
-func (qb *Obj) urlProcessStartTime() {
+func (qb *Obj) UrlProcessStartTime() {
 	var opObjStartime OperatorStruct
 	var opObjEndTime OperatorStruct
 	columnNameObj := ColumnNameStruct{}
@@ -258,7 +264,5 @@ func (qb *Obj) urlProcessStartTime() {
 	opObjStartime.BuildOperatorString(columnNameObj, qb.SQLQuery.StartTime, qb.SQLLanguageLiterals.Gte, qb.SQLLanguageLiterals.Language)
 	qb.BuildWhere(&opObjStartime, qb.SQLLanguageLiterals.WhereKeyword)
 	opObjEndTime.BuildOperatorString(columnNameObj, qb.SQLQuery.EndTime, qb.SQLLanguageLiterals.Lte, qb.SQLLanguageLiterals.Language)
-	qb.SQLQuery.OperatorPhrase = map[int][]string{
-		0: {fmt.Sprintf(" %s ", qb.SQLLanguageLiterals.AndKeyword) + opObjEndTime.FinalOperatorPhrase},
-	}
+	qb.SQLQuery.OperatorPhrase[0] = []string{fmt.Sprintf(" %s ", qb.SQLLanguageLiterals.AndKeyword) + opObjEndTime.FinalOperatorPhrase}
 }

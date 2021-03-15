@@ -1,13 +1,13 @@
 package querybuilder
 
 // AndStruct is a struct to hold the AND clause
-type AndStruct struct {
-	AndKeyword string //And
-	// AllowedTypes   []string       // string, int, time etc
-	AndOperator    OperatorStruct // can be between , like, equal
-	FinalAndPhrase string         //mix of all above
-	GroupNum       string
-}
+// type AndStruct struct {
+// 	AndKeyword string //And
+// 	// AllowedTypes   []string       // string, int, time etc
+// 	AndOperator    OperatorStruct // can be between , like, equal
+// 	FinalAndPhrase string         //mix of all above
+// 	GroupNum       string
+// }
 
 // BuildAnd is a function to build all the and phrase coming in the query  after where and before group by(not in the having)
 // func (qb *Obj) BuildAnd() {

@@ -51,6 +51,8 @@ type SQLLanguageLiterals struct {
 	NotEqualToString string
 	ByTimeBucket     string
 	TimeBucketAlias  string
+	TimeMaxEpoch     string
+	TimeMinEpoch     string
 }
 
 //DruidSQLLanguageLiterals has all keywords understood in druid sql
@@ -99,6 +101,8 @@ var DruidSQLLanguageLiterals = SQLLanguageLiterals{
 	NotEqualToString: "%s <> '%v'",
 	ByTimeBucket:     "FLOOR(%s to %s)",
 	TimeBucketAlias:  "time_bucket",
+	TimeMaxEpoch:     " EXTRACT(epoch from MAX(%s))",
+	TimeMinEpoch:     " EXTRACT(epoch from MIN(%s))",
 }
 
 //PGSQLLanguageLiterals has all keywords understood in postgresq pgsql
@@ -147,4 +151,6 @@ var PGSQLLanguageLiterals = SQLLanguageLiterals{
 	NotEqualToString: "%s <> '%v'",
 	ByTimeBucket:     "DATE_TRUNC('%s',%s)",
 	TimeBucketAlias:  "time_bucket",
+	TimeMaxEpoch:     " EXTRACT(epoch from MAX(%s))::int",
+	TimeMinEpoch:     " EXTRACT(epoch from MIN(%s))::int",
 }

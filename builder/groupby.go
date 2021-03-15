@@ -17,10 +17,13 @@ func (qb *Obj) BuildGroupBy(columnList []ColumnNameStruct) {
 	qb.SQLQuery.GroupByPhrase.GroupByKeyword = qb.SQLLanguageLiterals.GroupByKeyword
 	qb.SQLQuery.GroupByPhrase.GroupByColumns = columnList
 
-	var joinedStr []string
-	for _, col := range columnList {
-		joinedStr = append(joinedStr, col.FinalColumnNamePhrase)
+	if len(columnList) > 0 {
+		var joinedStr []string
+		for _, col := range columnList {
+			joinedStr = append(joinedStr, col.FinalColumnNamePhrase)
+		}
+		finalColumnList := s.Join(joinedStr, ",")
+		qb.SQLQuery.GroupByPhrase.FinalGroupByPhrase = fmt.Sprintf(" %s %s ", qb.SQLQuery.GroupByPhrase.GroupByKeyword, finalColumnList)
 	}
-	finalColumnList := s.Join(joinedStr, ",")
-	qb.SQLQuery.GroupByPhrase.FinalGroupByPhrase = fmt.Sprintf(" %s %s ", qb.SQLQuery.GroupByPhrase.GroupByKeyword, finalColumnList)
+
 }
