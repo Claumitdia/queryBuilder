@@ -16,7 +16,7 @@ func (d *DruidDbObj) DbConnect() error {
 	return nil
 }
 
-func (d *DruidDbObj) DbQueryRun(queryString string) ([]map[string]string, error) {
+func (d *DruidDbObj) DbQueryRun(queryString string) ([]map[string]interface{}, error) {
 	sqlPostRequest := map[string]string{
 		"query": queryString,
 	}
@@ -33,7 +33,7 @@ func (d *DruidDbObj) DbQueryRun(queryString string) ([]map[string]string, error)
 		return nil, err
 	}
 
-	var data []map[string]string
+	var data []map[string]interface{}
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		log.Fatalln(err)

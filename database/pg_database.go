@@ -28,7 +28,7 @@ func (d *PgDbObj) DbConnect() error {
 	return nil
 }
 
-func (d *PgDbObj) DbQueryRun(queryString string) ([]map[string]string, error) {
+func (d *PgDbObj) DbQueryRun(queryString string) ([]map[string]interface{}, error) {
 	stmt, err := d.Db.Prepare("select jsonb_agg( g.*) from ( " + queryString + " ) g")
 	if err != nil {
 		log.Fatalln(err)
@@ -44,7 +44,7 @@ func (d *PgDbObj) DbQueryRun(queryString string) ([]map[string]string, error) {
 		rows.Scan(&results)
 	}
 
-	var queryResults []map[string]string
+	var queryResults []map[string]interface{}
 	err = json.Unmarshal([]byte(results), &queryResults)
 	if err != nil {
 		log.Fatalln(err)

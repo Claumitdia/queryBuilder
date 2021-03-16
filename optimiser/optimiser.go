@@ -1,11 +1,7 @@
 package optimiser
 
 import (
-	"bytes"
-	"encoding/json"
-	"io/ioutil"
 	"log"
-	"net/http"
 	builder "queryBuilder/builder"
 	db "queryBuilder/database"
 	"time"
@@ -72,42 +68,35 @@ func (o *Obj) GetTimeFrameBucket(sqlObj builder.Obj, dbObj db.DbObj) (int64, err
 	tempQueryBucket.SQLQuery.SelectPhrase.ColumnNames = nil
 	tempQueryBucket.SQLQuery.SelectPhrase.ColumnNames = append(tempQueryBucket.SQLQuery.SelectPhrase.ColumnNames, epochMaxTime, epochMinTime)
 	tempQueryBucket.BuildSelect(tempQueryBucket.SQLQuery.SelectPhrase.ColumnNames)
-	tempQueryBucket.SQLQuery.SQLTableName = "(" + finalQuery + ")"
+	tempQueryBucket.SQLQuery.SQLTableName = "(" + finalQuery + ") f"
 	tempQueryBucket.BuildFrom()
-	log.Println("from final phrase : ", tempQueryBucket.SQLQuery.FromPhrase.FinalFromPhrase)
 	finalQuery, finalQueryErr = tempQueryBucket.QueryBuilderFunc()
+	log.Println(">>>>>>>>>>>>>:", finalQuery)
 	if finalQueryErr != nil {
 		log.Println("Error in building size query :", finalQueryErr)
 		panic(finalQueryErr)
 	}
-	sqlPostRequest := map[string]string{
-		"query": finalQuery,
-	}
 
-	log.Println("Final Query for size from GetTimeFrameBucket :", finalQuery)
-	reqBodyJSON, err := json.Marshal(sqlPostRequest)
-	if err != nil {
-		panic(err)
-	}
-
-	druidServerURL := "http://10.179.206.156:8888/druid/v2/sql"
-	resp, err := http.Post(druidServerURL, "application/json", bytes.NewBuffer(reqBodyJSON))
-	if err != nil {
-		log.Fatalln(err)
-	}
-	body, err := ioutil.ReadAll(resp.Body)
-	var maxMinTimes []map[string]int64
-	maxMinTimesErr := json.Unmarshal(body, &maxMinTimes)
+	maxMinTimes, maxMinTimesErr := dbObj.DbQueryRun(finalQuery)
 	if maxMinTimesErr != nil {
 		panic(maxMinTimesErr)
 	}
 
-	log.Println("\n max min time:", maxMinTimes)
-
+	log.Println("\n\n>>>>>>>>>>>:", maxMinTimes)
 	//subtracting epoch
-	maxTimeFinal := int64(maxMinTimes[0]["maxTime"])
-	minTimeFinal := int64(maxMinTimes[0]["minTime"])
+	maxTime, ok := maxMinTimes[0]["maxTime"].(float64)
+	if !ok {
+		log.Fatalln("max time assertion: ", ok)
+		panic(ok)
+	}
+	minTime, ok := maxMinTimes[0]["minTime"].(float64)
+	if !ok {
+		log.Fatalln("min time assertion: ", ok)
+		panic(ok)
+	}
 
+	maxTimeFinal := int64(maxTime)
+	minTimeFinal := int64(minTime)
 	epochInterval := maxTimeFinal - minTimeFinal
 
 	log.Println("epochInterval :", epochInterval)
@@ -139,7 +128,7 @@ func (o *Obj) QueryTransformer(sqlObj builder.Obj, timeBucket int64) (map[int]st
 			tempQueryBucket.SQLQuery.StartTime = time.Unix(stInternal, 0).Local().UTC().String()[:19]
 			tempQueryBucket.SQLQuery.EndTime = time.Unix(etInternal, 0).Local().UTC().String()[:19]
 			tempQueryBucket.UrlProcessStartTime()
-			log.Printf("clause : %v %v", tempQueryBucket.SQLQuery.OperatorPhrase[0], tempQueryBucket.SQLQuery.WherePhrase.FinalWherePhrase)
+			// log.Printf("clause : %v %v", tempQueryBucket.SQLQuery.OperatorPhrase[0], tempQueryBucket.SQLQuery.WherePhrase.FinalWherePhrase)
 			finalQuery, finalQueryErr := tempQueryBucket.QueryBuilderFunc()
 			if finalQueryErr != nil {
 				log.Println(finalQueryErr)
@@ -150,7 +139,7 @@ func (o *Obj) QueryTransformer(sqlObj builder.Obj, timeBucket int64) (map[int]st
 		} else {
 			stInternal = etInternal
 			etInternal = etUnix
-			log.Printf("%v %v", time.Unix(stInternal, 0), time.Unix(etInternal, 0))
+			// log.Printf("helo :>> %v %v", time.Unix(stInternal, 0).Local().UTC().String()[:19], time.Unix(etInternal, 0).Local().UTC().String()[:19])
 			tempQueryBucket.SQLQuery.StartTime = time.Unix(stInternal, 0).Local().UTC().String()[:19]
 			tempQueryBucket.SQLQuery.EndTime = time.Unix(etInternal, 0).Local().UTC().String()[:19]
 			tempQueryBucket.UrlProcessStartTime()

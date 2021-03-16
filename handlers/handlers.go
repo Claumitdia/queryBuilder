@@ -29,8 +29,19 @@ func HandlerFuncDruid(w http.ResponseWriter, r *http.Request) {
 		panic(err)
 	}
 	finalColumnDtMap := map[string]string{}
+
 	for _, columnDt := range data {
-		finalColumnDtMap[columnDt["COLUMN_NAME"]] = columnDt["DATA_TYPE"]
+		cName, ok := columnDt["COLUMN_NAME"].(string)
+		if !ok {
+			log.Fatalln("column name :", ok)
+			panic(ok)
+		}
+		cType, ok := columnDt["DATA_TYPE"].(string)
+		if !ok {
+			log.Fatalln("column type :", ok)
+			panic(ok)
+		}
+		finalColumnDtMap[cName] = cType
 	}
 
 	var druidQueryBuilder q.Obj
@@ -55,7 +66,11 @@ func HandlerFuncDruid(w http.ResponseWriter, r *http.Request) {
 	var druidOptimiser p.Obj
 	druidOptimiser.LimitsObj.OptimalCount = 140
 	e, _ := druidOptimiser.GetTimeFrameBucket(druidQueryBuilder, &druidDbObj)
-	_, mapQueriesErr := druidOptimiser.QueryTransformer(druidQueryBuilder, e)
+	mapQueries, mapQueriesErr := druidOptimiser.QueryTransformer(druidQueryBuilder, e)
+	log.Println("\n\n\n\nLength of Map of Queries:", len(mapQueries))
+	// for idx, val := range mapQueries {
+	// 	log.Printf("%v : %v", idx, val)
+	// }
 	if mapQueriesErr != nil {
 		panic(mapQueriesErr)
 	}
@@ -71,33 +86,37 @@ func HandlerFuncPg(w http.ResponseWriter, r *http.Request) {
 
 	var pgDbObj db.PgDbObj
 	connStr := "host=sqlnlmetadata.amer.dell.com port=5432 user=ryan_morris1 password=FoolishPassword dbname=druid sslmode=disable"
-	query := "SELECT distinct column_name, data_type FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = 'public' and Table_name='" + queryParametersURLValues["dataSource"][0] + "'"
+	query := "SELECT distinct column_name as \"COLUMN_NAME\", data_type as \"DATA_TYPE\" FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = 'public' and Table_name='" + queryParametersURLValues["dataSource"][0] + "'"
 	pgDbObj.ConnectionString = connStr
 	conectionErr := pgDbObj.DbConnect()
 	if conectionErr != nil {
 		log.Fatalln(conectionErr)
 		panic(conectionErr)
 	}
-	ColumnDataType, err := pgDbObj.DbQueryRun(query)
+	data, err := pgDbObj.DbQueryRun(query)
 	if err != nil {
 		log.Fatalln(err)
 		panic(err)
 	}
-	log.Println("ColumnDataType map pg: ", ColumnDataType)
+	log.Println("data map pg: ", data)
 	var pgQueryBuilder q.Obj
 	pgQueryBuilder.SQLLanguageLiterals = q.PGSQLLanguageLiterals
-	pgQueryBuilder.SQLQuery.SQLColumnTypes = ColumnDataType[0]
-	pgQueryBuilder.SQLBuilderFromURL(queryParametersURLValues)
-
-	var pgOptimiser p.Obj
-	pgOptimiser.LimitsObj.OptimalCount = 10000
-
-	e, err := pgOptimiser.GetTimeFrameBucket(pgQueryBuilder, &pgDbObj)
-	if err != nil {
-		log.Fatalln(err)
-		panic(err)
+	finalColumnDtMap := map[string]string{}
+	for _, columnDt := range data {
+		cName, ok := columnDt["COLUMN_NAME"].(string)
+		if !ok {
+			log.Fatalln("column name :", ok)
+			panic(ok)
+		}
+		cType, ok := columnDt["DATA_TYPE"].(string)
+		if !ok {
+			log.Fatalln("column type :", ok)
+			panic(ok)
+		}
+		finalColumnDtMap[cName] = cType
 	}
-	pgOptimiser.QueryTransformer(pgQueryBuilder, e)
+	pgQueryBuilder.SQLQuery.SQLColumnTypes = finalColumnDtMap
+	pgQueryBuilder.SQLBuilderFromURL(queryParametersURLValues)
 
 	pgQuery, err := pgQueryBuilder.QueryBuilderFunc()
 	if err != nil {
@@ -117,4 +136,21 @@ func HandlerFuncPg(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-type", "json")
 	w.Write(resultsString)
+
+	//testing optimiser
+	var pgOptimiser p.Obj
+	pgOptimiser.LimitsObj.OptimalCount = 150
+	e, err := pgOptimiser.GetTimeFrameBucket(pgQueryBuilder, &pgDbObj)
+	if err != nil {
+		log.Fatalln(err)
+		panic(err)
+	}
+	mapQueries, mapQueriesErr := pgOptimiser.QueryTransformer(pgQueryBuilder, e)
+	log.Println("\n\n\n\nLength of Map of Queries:", len(mapQueries))
+	// for idx, val := range mapQueries {
+	// 	log.Printf("%v : %v", idx, val)
+	// }
+	if mapQueriesErr != nil {
+		panic(mapQueriesErr)
+	}
 }

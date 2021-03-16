@@ -18,7 +18,7 @@ func (qb *Obj) BuildSelect(columnList []ColumnNameStruct) {
 	qb.SQLQuery.SelectPhrase.SelectKeyword = qb.SQLLanguageLiterals.SelectKeyword
 	qb.SQLQuery.SelectPhrase.ColumnNames = columnList
 
-	log.Println("\nfrom inside select: ", qb.SQLQuery.SelectPhrase.ColumnNames)
+	log.Println("\nfrom inside sclearelect: ", qb.SQLQuery.SelectPhrase.ColumnNames)
 	var joinedStr []string
 	for _, col := range columnList {
 		joinedStr = append(joinedStr, col.FinalColumnNamePhrase)
