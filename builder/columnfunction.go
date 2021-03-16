@@ -19,6 +19,18 @@ func (cft *ColumnFunctionType) BuildColumnFunctionTypeObj(columnFunctionName str
 	if cft.functionName == "" {
 		cft.FinalColumnFunctionPhrase = "%s"
 	} else {
-		cft.FinalColumnFunctionPhrase = fmt.Sprintf("%s(%s) ", cft.functionName, "%s")
+		cft.FinalColumnFunctionPhrase = cft.functionName
+	}
+}
+
+//BuildRollUpObj when timebucket is used
+//TODO: to be improved. This is sloppy coding.
+func (cft *ColumnFunctionType) BuildRollUpObj(columnFunctionName string, columnFunctionType string, timeBucketVal string, language string) {
+	cft.functionName = columnFunctionName
+	cft.functionType = columnFunctionType
+	if language == DruidSQLLanguageLiterals.Language {
+		cft.FinalColumnFunctionPhrase = fmt.Sprintf(cft.functionName, "%s", timeBucketVal)
+	} else if language == PGSQLLanguageLiterals.Language {
+		cft.FinalColumnFunctionPhrase = fmt.Sprintf(cft.functionName, timeBucketVal, "%s")
 	}
 }
