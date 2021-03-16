@@ -4,6 +4,7 @@ import (
 	"log"
 	builder "queryBuilder/builder"
 	db "queryBuilder/database"
+	"sync"
 	"time"
 )
 
@@ -12,7 +13,7 @@ import (
 type Optimiser interface {
 	GetTimeFrameBucket(sqlObj builder.SQLQueryObj, db db.DbObj) (time.Duration, error)
 	QueryTransformer(sqlObj builder.SQLQueryObj, timeBucket int) (map[int]string, error)
-	ProcessQueriesAndMerge(queryMap map[int]string, db db.DbObj) (interface{}, error)
+	ProcessQueriesAndMerge(queryMap map[int]string, db db.DbObj) ([]map[string]interface{}, error)
 }
 
 //Limits will hold values like
@@ -153,4 +154,70 @@ func (o *Obj) QueryTransformer(sqlObj builder.Obj, timeBucket int64) (map[int]st
 		}
 	}
 	return concurrentQueryMap, nil
+}
+
+func (o *Obj) ProcessQueriesAndMerge(queryMap map[int]string, db db.DbObj) ([]map[string]interface{}, error) {
+	log.Println("inside ProcessQueriesAndMerge ")
+	queriesLength := len(queryMap)
+	result := make(chan map[int][]map[string]interface{})
+	mergedResult := make(chan map[int][]map[string]interface{})
+
+	// // a channel to tell it to stop
+	// stopchan := make(chan struct{})
+	// // a channel to signal that it's stopped
+	// stoppedchan := make(chan struct{})
+
+	var wg sync.WaitGroup
+	// waitGroup (no of druid goroutines + mergeData goroutine)
+	wg.Add(queriesLength + 1)
+	for key, query := range queryMap {
+		// call goroutine
+		go getData(key, query, result, &wg, db)
+	}
+
+	// goroutine to merge data parallelly
+	go mergeData(result, &wg, queriesLength, mergedResult)
+
+	fResult := <-mergedResult
+	// log.Println("fResult ", fResult)
+	var finalData []map[string]interface{}
+	for i := 0; i < len(fResult); i++ {
+		finalData = append(finalData, fResult[i]...)
+	}
+	close(mergedResult) // close channel
+	return finalData, nil
+}
+
+func getData(key int, query string, result chan map[int][]map[string]interface{}, wg *sync.WaitGroup, db db.DbObj) {
+	log.Println("goroutine started ... ", key)
+	tempResult := make(map[int][]map[string]interface{})
+	// open database connection
+	db.DbConnect()
+	// Run query
+	data, err := db.DbQueryRun(query)
+	if err != nil {
+		panic(err)
+	}
+	tempResult[key] = data
+	// close database connection
+	db.DbClose()
+	log.Println("go routine ended", key)
+	wg.Done()
+	result <- tempResult // pushing to result channel
+}
+
+func mergeData(result chan map[int][]map[string]interface{}, wg *sync.WaitGroup, queriesLength int, finalResult2 chan map[int][]map[string]interface{}) {
+	log.Println("Inside merge data ")
+	tempData := make(map[int][]map[string]interface{})
+	for i := 0; i < queriesLength; i++ {
+		// assigning data from result  channel to temp variable
+		temp := <-result
+		for k, v := range temp {
+			tempData[k] = v // pushing all the results
+		}
+	}
+	log.Println("Merge completed")
+	wg.Done()
+	finalResult2 <- tempData // pushing all the results to channel
+	close(result)            // close channel
 }
