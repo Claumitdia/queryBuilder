@@ -160,35 +160,46 @@ func (o *Obj) ProcessQueriesAndMerge(queryMap map[int]string, db db.DbObj) ([]ma
 	log.Println("inside ProcessQueriesAndMerge ")
 	queriesLength := len(queryMap)
 	result := make(chan map[int][]map[string]interface{})
-	mergedResult := make(chan map[int][]map[string]interface{})
+	allResultWithKey := make(chan map[int][]map[string]interface{})
 
-	// // a channel to tell it to stop
-	// stopchan := make(chan struct{})
-	// // a channel to signal that it's stopped
-	// stoppedchan := make(chan struct{})
+	// a channel to tell it to stop
+	quit := make(chan bool)
 
+	// a channel to pass error
+	errorChannel := make(chan error)
+
+	// waitgroup to tell all the gorutines are executed properly or not
 	var wg sync.WaitGroup
+
 	// waitGroup (no of druid goroutines + mergeData goroutine)
 	wg.Add(queriesLength + 1)
 	for key, query := range queryMap {
 		// call goroutine
-		go getData(key, query, result, &wg, db)
+		go getData(key, query, result, &wg, db, quit, errorChannel)
 	}
 
 	// goroutine to merge data parallelly
-	go mergeData(result, &wg, queriesLength, mergedResult)
+	go mergeData(result, &wg, queriesLength, allResultWithKey, quit, errorChannel)
 
-	fResult := <-mergedResult
-	// log.Println("fResult ", fResult)
-	var finalData []map[string]interface{}
-	for i := 0; i < len(fResult); i++ {
-		finalData = append(finalData, fResult[i]...)
+	// get mergedResult to fResult
+	fAllResultWithKey := <-allResultWithKey
+
+	// get errors from error channel to druidError if any
+	druidError := <-errorChannel
+
+	// if druid error occurs then return the error
+	if druidError != nil {
+		return nil, druidError
+	} else { // append the merged result and return
+		var mergedData []map[string]interface{}
+		for i := 0; i < len(fAllResultWithKey); i++ {
+			mergedData = append(mergedData, fAllResultWithKey[i]...)
+		}
+		return mergedData, nil
 	}
-	close(mergedResult) // close channel
-	return finalData, nil
 }
 
-func getData(key int, query string, result chan map[int][]map[string]interface{}, wg *sync.WaitGroup, db db.DbObj) {
+func getData(key int, query string, result chan map[int][]map[string]interface{}, wg *sync.WaitGroup, db db.DbObj, quit chan bool, errorChannel chan error) {
 	log.Println("goroutine started ... ", key)
 	tempResult := make(map[int][]map[string]interface{})
 	// open database connection
@@ -196,7 +207,11 @@ func getData(key int, query string, result chan map[int][]map[string]interface{}
 	// Run query
 	data, err := db.DbQueryRun(query)
 	if err != nil {
-		panic(err)
+		log.Println("Error occurred, goroutine ended ", key, err)
+		db.DbClose()
+		quit <- true
+		errorChannel <- err
+		return
 	}
 	tempResult[key] = data
 	// close database connection
@@ -206,18 +221,26 @@ func getData(key int, query string, result chan map[int][]map[string]interface{}
 	result <- tempResult // pushing to result channel
 }
 
-func mergeData(result chan map[int][]map[string]interface{}, wg *sync.WaitGroup, queriesLength int, finalResult2 chan map[int][]map[string]interface{}) {
+func mergeData(result chan map[int][]map[string]interface{}, wg *sync.WaitGroup, queriesLength int, allResultWithKey chan map[int][]map[string]interface{}, quit chan bool, errorChannel chan error) {
 	log.Println("Inside merge data ")
-	tempData := make(map[int][]map[string]interface{})
+	tempAllResultWithKey := make(map[int][]map[string]interface{})
 	for i := 0; i < queriesLength; i++ {
 		// assigning data from result  channel to temp variable
-		temp := <-result
-		for k, v := range temp {
-			tempData[k] = v // pushing all the results
+		select {
+		case <-quit:
+			log.Println("Error occurred, goroutine ended ")
+			close(allResultWithKey)
+			return
+		default:
+			temp := <-result
+			for k, v := range temp {
+				tempAllResultWithKey[k] = v
+			}
 		}
 	}
 	log.Println("Merge completed")
 	wg.Done()
-	finalResult2 <- tempData // pushing all the results to channel
-	close(result)            // close channel
+	allResultWithKey <- tempAllResultWithKey // pushing all the results to channel
+	close(result)                            // close channel
+	close(errorChannel)
 }

@@ -8,6 +8,16 @@ import (
 	"net/http"
 )
 
+type DruidException struct {
+	// Error        string `json:"error"`
+	ErrorMessage string `json:"errorMessage"`
+	ErrorClass   string `json:"errorClass"`
+}
+
+func (d DruidException) Error() string {
+	return d.ErrorMessage
+}
+
 type DruidDbObj struct {
 	DruidServerURL string
 }
@@ -42,8 +52,13 @@ func (d *DruidDbObj) DbQueryRun(queryString string) ([]map[string]interface{}, e
 
 	err = json.Unmarshal(body, &data)
 	if err != nil {
-		log.Fatalln(err)
-		return nil, err
+		log.Println("Unmarshal error : ", err)
+		var druidException DruidException
+		unmarshallErr := json.Unmarshal(body, &druidException)
+		if unmarshallErr != nil {
+			return nil, druidException
+		}
+		return nil, druidException
 	}
 	return data, nil
 }
